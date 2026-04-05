@@ -1,4 +1,5 @@
 import { createSign } from "crypto";
+import { config } from "../config.js";
 import { fetchWithTimeout } from "../utils/fetch.js";
 import { logger } from "../utils/logger.js";
 import type { IndexingEvent } from "../types.js";
@@ -8,7 +9,10 @@ const INDEXING_API_ENDPOINT =
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
 const GOOGLE_PING_ENDPOINT = "https://www.google.com/ping";
-const SITEMAP_URL = "https://trade.aero/sitemap.xml";
+
+function getSitemapUrl(): string {
+  return `${config.site.baseUrl}/sitemap.xml`;
+}
 
 interface ServiceAccount {
   client_email: string;
@@ -114,8 +118,6 @@ async function submitOneUrl(
  * Google Indexing API daily quota: 200 URL notifications per Search Console
  * property.  At 1 URL/event → up to ~200 new listings/day; at 14 URLs/event
  * → ~14 listings/day.  Quota resets at midnight Pacific time.
- *
- * Returns per-event results so the caller can mark each event individually.
  */
 export async function submitGoogleEvents(
   events: IndexingEvent[],
@@ -183,7 +185,6 @@ export async function submitGoogleEvents(
           });
           break;
         } else {
-          // 400-level errors (except 429) are permanent — mark event as failed
           eventSuccess = false;
           logger.warn("Google Indexing API: submission rejected", {
             url,
@@ -237,7 +238,8 @@ export async function pingGoogleSitemap(
   events: IndexingEvent[],
   correlationId: string
 ): Promise<GoogleBatchResult> {
-  const pingUrl = `${GOOGLE_PING_ENDPOINT}?sitemap=${encodeURIComponent(SITEMAP_URL)}`;
+  const sitemapUrl = getSitemapUrl();
+  const pingUrl = `${GOOGLE_PING_ENDPOINT}?sitemap=${encodeURIComponent(sitemapUrl)}`;
 
   try {
     const response = await fetchWithTimeout(pingUrl, { method: "GET" });
@@ -252,10 +254,7 @@ export async function pingGoogleSitemap(
         { correlationId }
       );
     } else {
-      logger.info("Google sitemap ping", {
-        status: response.status,
-        correlationId,
-      });
+      logger.info("Google sitemap ping", { status: response.status, correlationId });
     }
 
     return {

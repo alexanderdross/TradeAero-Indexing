@@ -5,6 +5,15 @@ export const config = {
     url: process.env.SUPABASE_URL ?? "",
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   },
+  site: {
+    /**
+     * Base URL of the live production site.
+     * All submitted URLs are built from this base.
+     * Only set this to the domain that is publicly live — search engines
+     * will attempt to crawl the submitted URLs immediately.
+     */
+    baseUrl: (process.env.SITE_BASE_URL ?? "https://trade.aero").replace(/\/$/, ""),
+  },
   indexnow: {
     apiKey: process.env.INDEXNOW_API_KEY ?? "",
     /** Max listings per IndexNow batch (each listing = 14 locale URLs) */
@@ -43,7 +52,6 @@ export function validateConfig(): void {
     throw new Error("INDEXNOW_API_KEY is required");
   }
   if (config.google.serviceAccountJson) {
-    // Quick sanity-check that the value is parseable JSON
     try {
       const sa = JSON.parse(config.google.serviceAccountJson) as Record<string, unknown>;
       if (!sa.client_email || !sa.private_key) {
@@ -62,6 +70,7 @@ export function validateConfig(): void {
       "[CONFIG] GOOGLE_SERVICE_ACCOUNT_JSON not set — will use sitemap ping fallback"
     );
   }
+  console.log(`[CONFIG] Site base URL: ${config.site.baseUrl}`);
   if (config.indexing.dryRun) {
     console.log("[CONFIG] DRY RUN mode — external submissions will be skipped");
   }

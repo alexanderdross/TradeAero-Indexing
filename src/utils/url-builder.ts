@@ -1,6 +1,5 @@
+import { config } from "../config.js";
 import type { EntityType, SupportedLang } from "../types.js";
-
-const BASE = "https://trade.aero";
 
 export const ALL_LANGS: SupportedLang[] = [
   "en", "de", "fr", "es", "it", "pl",
@@ -89,11 +88,12 @@ export function buildAllLocaleUrls(
   entityType: EntityType,
   slugs: Record<SupportedLang, string>,
 ): string[] {
+  const base = config.site.baseUrl;
   return ALL_LANGS.map((locale) => {
     const path = PATHS[entityType][locale];
     const slug = slugs[locale];
     const prefix = locale === "en" ? "" : `/${locale}`;
-    return `${BASE}${prefix}/${path}/${slug}`;
+    return `${base}${prefix}/${path}/${slug}`;
   });
 }
 
@@ -102,5 +102,5 @@ export function buildAllLocaleUrls(
  * Used as the primary reference URL stored in indexing_events.url.
  */
 export function buildEnglishUrl(entityType: EntityType, slugEn: string): string {
-  return `${BASE}/${PATHS[entityType].en}/${slugEn}`;
+  return `${config.site.baseUrl}/${PATHS[entityType].en}/${slugEn}`;
 }
