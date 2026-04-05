@@ -40,7 +40,8 @@ async function fetchFromTable(
   table: string,
   entityType: EntityType,
   since: Date,
-  extraFilters?: (query: ReturnType<typeof supabase.from>) => ReturnType<typeof supabase.from>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extraFilters?: (query: any) => any,
 ): Promise<DiscoveredListing[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query: any = supabase
