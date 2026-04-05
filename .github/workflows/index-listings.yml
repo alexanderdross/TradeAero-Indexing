@@ -1,0 +1,70 @@
+name: "Index New Listings"
+
+# Runs every 15 minutes to pick up newly published, fully-translated listings
+# and submit their locale URLs to IndexNow + ping Google's sitemap endpoint.
+#
+# Translation gate: listings are only submitted after ALL 14 locale slugs are
+# populated (enforced by the DB query in src/db/listings.ts).
+#
+# Idempotency: the dedupe_key unique index in indexing_events prevents duplicate
+# submissions even if two runs briefly overlap (cancel-in-progress: false).
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"    # Every 15 minutes
+  workflow_dispatch:
+    inputs:
+      lookback_minutes:
+        description: "Lookback window in minutes (default: 60; use 10080 for 1-week backfill)"
+        required: false
+        default: "60"
+        type: string
+      dry_run:
+        description: "Dry run — discover and enqueue but skip external API calls"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Prevent concurrent runs from double-submitting the same URLs.
+    # cancel-in-progress: false — let the current run finish;
+    # the dedupe_key unique index handles any overlap at the DB level.
+    concurrency:
+      group: index-listings
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run indexer
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INDEXNOW_API_KEY: ${{ secrets.INDEXNOW_API_KEY }}
+          INDEXING_LOOKBACK_MINUTES: ${{ github.event.inputs.lookback_minutes || '60' }}
+          INDEXING_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          LOG_LEVEL: "info"
+        run: node dist/index.js
