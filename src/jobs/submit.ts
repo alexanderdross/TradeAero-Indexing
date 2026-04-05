@@ -135,6 +135,16 @@ async function processGoogleEvents(
     if (result.success) {
       await markEventsSuccess([event.id], result.httpStatus, result.responseBody);
       stats.googleSuccess++;
+    } else if (result.skipped) {
+      // Endpoint deprecated or permanently unavailable — skip without retry
+      await markEventFailed(
+        event.id,
+        result.httpStatus,
+        result.responseBody,
+        null,
+        true, // skip = true
+      );
+      stats.googleFailed++;
     } else {
       const newCount = event.attempt_count + 1;
       const skip = shouldAbortRetrying(newCount);
