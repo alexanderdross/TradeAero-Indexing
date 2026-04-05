@@ -8,7 +8,7 @@ const INDEXING_API_ENDPOINT =
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const INDEXING_SCOPE = "https://www.googleapis.com/auth/indexing";
 const GOOGLE_PING_ENDPOINT = "https://www.google.com/ping";
-const SITEMAP_URL = "https://trade.aero/2d6a9a/sitemap.xml";
+const SITEMAP_URL = "https://trade.aero/sitemap.xml";
 
 interface ServiceAccount {
   client_email: string;
@@ -21,6 +21,7 @@ export interface GoogleEventResult {
   success: boolean;
   httpStatus: number;
   responseBody: string;
+  skipped?: boolean;
 }
 
 export interface GoogleBatchResult {
@@ -226,6 +227,11 @@ export async function submitGoogleEvents(
  * Fallback: notify Google by pinging the sitemap endpoint (no auth required).
  * One ping per run covers all listings via hreflang tags in the sitemap.
  * Used automatically when GOOGLE_SERVICE_ACCOUNT_JSON is not configured.
+ *
+ * NOTE: Google deprecated and removed this endpoint in January 2024.
+ * A 404 response is expected — events are marked 'skipped' rather than
+ * 'failed' so they do not keep retrying. Set GOOGLE_SERVICE_ACCOUNT_JSON
+ * to use the proper Google Indexing API instead.
  */
 export async function pingGoogleSitemap(
   events: IndexingEvent[],
@@ -236,16 +242,28 @@ export async function pingGoogleSitemap(
   try {
     const response = await fetchWithTimeout(pingUrl, { method: "GET" });
     const responseBody = (await response.text()).slice(0, 500);
-    logger.info("Google sitemap ping", {
-      status: response.status,
-      correlationId,
-    });
+
+    // Google removed the ping endpoint in Jan 2024 — 404 is expected.
+    // Treat as skipped (not failed) so events don't retry indefinitely.
+    const isDeprecated = response.status === 404;
+    if (isDeprecated) {
+      logger.warn(
+        "Google sitemap ping: endpoint deprecated (404) — mark events skipped. Add GOOGLE_SERVICE_ACCOUNT_JSON for proper indexing.",
+        { correlationId }
+      );
+    } else {
+      logger.info("Google sitemap ping", {
+        status: response.status,
+        correlationId,
+      });
+    }
 
     return {
       usedIndexingApi: false,
       results: events.map((e) => ({
         eventId: e.id,
         success: response.ok,
+        skipped: isDeprecated,
         httpStatus: response.status,
         responseBody,
       })),
