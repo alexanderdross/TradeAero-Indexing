@@ -3,7 +3,6 @@ import { logger } from "../utils/logger.js";
 import { config } from "../config.js";
 
 const INDEXNOW_ENDPOINT = "https://api.indexnow.org/IndexNow";
-const HOST = "trade.aero";
 /** IndexNow supports up to 10,000 URLs per request */
 const MAX_URLS_PER_REQUEST = 10_000;
 
@@ -23,8 +22,8 @@ export interface IndexNowResult {
  * Response codes:
  * - 200/202: Accepted (success)
  * - 400: Bad request (invalid payload)
- * - 403: Forbidden (key file not found or mismatch at https://trade.aero/{key}.txt)
- * - 422: Unprocessable (URLs don’t match the declared host)
+ * - 403: Forbidden (key file not found or mismatch at https://{host}/{key}.txt)
+ * - 422: Unprocessable (URLs don't match the declared host)
  * - 429: Rate limited (retry with backoff)
  * - 5xx: Server error (retry with backoff)
  */
@@ -37,7 +36,9 @@ export async function submitToIndexNow(
   }
 
   const key = config.indexnow.apiKey;
-  const keyLocation = `https://${HOST}/${key}.txt`;
+  // Derive host from configurable base URL so key verification file matches
+  const host = new URL(config.site.baseUrl).hostname;
+  const keyLocation = `https://${host}/${key}.txt`;
 
   // Chunk if somehow over the IndexNow limit
   const chunks: string[][] = [];
@@ -49,7 +50,7 @@ export async function submitToIndexNow(
 
   for (const chunk of chunks) {
     const payload = {
-      host: HOST,
+      host,
       key,
       keyLocation,
       urlList: chunk,
