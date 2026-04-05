@@ -6,7 +6,7 @@ import {
   markEventFailed,
 } from "../db/indexing-events.js";
 import { submitToIndexNow } from "../channels/indexnow.js";
-import { pingGoogleSitemap } from "../channels/google.js";
+import { submitGoogleEvents, pingGoogleSitemap } from "../channels/google.js";
 import { computeNextRetryAt, shouldAbortRetrying } from "./retry.js";
 import { logger } from "../utils/logger.js";
 import type { SubmitStats, IndexingEvent } from "../types.js";
@@ -17,9 +17,9 @@ import type { SubmitStats, IndexingEvent } from "../types.js";
  * IndexNow: All pending indexnow-channel events are batched into a single
  * HTTP request (all 14 locale URLs per listing, flattened).
  *
- * Google: A single sitemap ping is sent if any google-channel events are
- * pending. The ping covers all locales because the sitemap includes hreflang
- * alternate links.
+ * Google (Indexing API): If GOOGLE_SERVICE_ACCOUNT_JSON is set, submits the
+ * canonical English URL of each listing directly to the Google Indexing API
+ * (per-event results).  Otherwise falls back to a single sitemap ping.
  *
  * Dry-run mode: Skips external calls and marks events as 'success' with
  * response "dry-run" for validation purposes.
@@ -88,7 +88,6 @@ async function processIndexNowEvents(
     await markEventsSuccess(events.map((e) => e.id), result.httpStatus, result.responseBody);
     stats.indexnowSuccess = events.length;
   } else {
-    // Mark all events in this batch as failed and schedule retries
     for (const event of events) {
       const newCount = event.attempt_count + 1;
       const skip = shouldAbortRetrying(newCount);
@@ -109,12 +108,14 @@ async function processGoogleEvents(
   correlationId: string,
   stats: SubmitStats,
 ): Promise<void> {
-  // Record attempt before calling external API
   await markEventsAttempted(events);
 
   if (config.indexing.dryRun) {
-    logger.info("[DRY RUN] Would ping Google sitemap", {
+    const useApi = !!config.google.serviceAccountJson;
+    logger.info("[DRY RUN] Would submit to Google", {
       eventCount: events.length,
+      method: useApi ? "Indexing API" : "sitemap ping",
+      allLocales: useApi ? config.google.allLocales : "n/a",
       correlationId,
     });
     await markEventsSuccess(events.map((e) => e.id), 0, "dry-run");
@@ -122,14 +123,19 @@ async function processGoogleEvents(
     return;
   }
 
-  // Single ping regardless of how many listings triggered it
-  const result = await pingGoogleSitemap(correlationId);
+  // Choose method based on whether a service account is configured
+  const { serviceAccountJson, allLocales } = config.google;
+  const batchResult = serviceAccountJson
+    ? await submitGoogleEvents(events, serviceAccountJson, allLocales, correlationId)
+    : await pingGoogleSitemap(events, correlationId);
 
-  if (result.success) {
-    await markEventsSuccess(events.map((e) => e.id), result.httpStatus, result.responseBody);
-    stats.googleSuccess = events.length;
-  } else {
-    for (const event of events) {
+  // Apply per-event results
+  for (const result of batchResult.results) {
+    const event = events.find((e) => e.id === result.eventId)!;
+    if (result.success) {
+      await markEventsSuccess([event.id], result.httpStatus, result.responseBody);
+      stats.googleSuccess++;
+    } else {
       const newCount = event.attempt_count + 1;
       const skip = shouldAbortRetrying(newCount);
       await markEventFailed(
@@ -139,7 +145,7 @@ async function processGoogleEvents(
         skip ? null : computeNextRetryAt(newCount),
         skip,
       );
+      stats.googleFailed++;
     }
-    stats.googleFailed = events.length;
   }
 }
