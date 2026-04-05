@@ -2,6 +2,11 @@ import { supabase } from "./client.js";
 import { logger } from "../utils/logger.js";
 import type { IndexingEvent, NewIndexingEvent } from "../types.js";
 
+// Sentinel value for next_retry_at on terminal states (success/skipped).
+// Column is NOT NULL so we can't use null — a far-future date is functionally
+// equivalent since fetchDueEvents only picks up pending/failed events.
+const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
+
 /**
  * Insert a new indexing event. Silently skips if the dedupe_key already
  * exists (same listing+channel was already indexed).
@@ -81,7 +86,7 @@ export async function markEventsSuccess(
       response_code: responseCode,
       response_body: responseBody.slice(0, 500),
       error_message: null,
-      next_retry_at: null,
+      next_retry_at: FAR_FUTURE,
     })
     .in("id", ids);
 
@@ -107,7 +112,7 @@ export async function markEventFailed(
       status: skip ? "skipped" : "failed",
       response_code: responseCode,
       response_body: responseBody.slice(0, 500),
-      next_retry_at: skip ? null : nextRetryAt?.toISOString() ?? null,
+      next_retry_at: skip ? FAR_FUTURE : (nextRetryAt?.toISOString() ?? FAR_FUTURE),
     })
     .eq("id", id);
 
