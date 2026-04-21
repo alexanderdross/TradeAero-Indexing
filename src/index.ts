@@ -4,6 +4,17 @@ import { submitPendingEvents } from "./jobs/submit.js";
 import { logger } from "./utils/logger.js";
 
 async function main(): Promise<void> {
+  // Pre-prod kill switch. The `production` GitHub Environment leaves
+  // INDEXING_ENABLED unset so the workflow exits cleanly without touching
+  // external search engines while trade.aero is still gated. Flip it on
+  // once trade.aero goes public.
+  if (process.env.INDEXING_ENABLED !== "true") {
+    logger.info("INDEXING_ENABLED is not 'true'; exiting without submitting.", {
+      branch: process.env.GITHUB_REF_NAME ?? "(unknown)",
+    });
+    return;
+  }
+
   validateConfig();
 
   // Use GitHub Actions run ID as correlation ID for easy log tracing
