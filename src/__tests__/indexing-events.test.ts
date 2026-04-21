@@ -1,28 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock Supabase client
-const mockUpdate = vi.fn();
-const mockIn = vi.fn();
-const mockEq = vi.fn();
-const mockUpsert = vi.fn();
-const mockSelect = vi.fn();
-const mockOr = vi.fn();
-const mockOrder = vi.fn();
-const mockLimit = vi.fn();
+// `vi.mock` calls are hoisted to the top of the file, which means any module-
+// level `const` they reference runs *after* the mock factory. Putting the mock
+// fns + chain builder inside `vi.hoisted` hoists them alongside the mock so the
+// factory can reach `chain` safely.
+const { mockUpdate, mockIn, mockEq, mockUpsert, chain } = vi.hoisted(() => {
+  const mockUpdate = vi.fn();
+  const mockIn = vi.fn();
+  const mockEq = vi.fn();
+  const mockUpsert = vi.fn();
+  const mockSelect = vi.fn();
+  const mockOr = vi.fn();
+  const mockOrder = vi.fn();
+  const mockLimit = vi.fn();
 
-// Chain builder — each method returns the chain so .update().eq() works
-const chain = {
-  update: mockUpdate,
-  in: mockIn,
-  eq: mockEq,
-  upsert: mockUpsert,
-  select: mockSelect,
-  or: mockOr,
-  order: mockOrder,
-  limit: mockLimit,
-};
+  // Chain builder — each method returns the chain so .update().eq() works
+  const chain = {
+    update: mockUpdate,
+    in: mockIn,
+    eq: mockEq,
+    upsert: mockUpsert,
+    select: mockSelect,
+    or: mockOr,
+    order: mockOrder,
+    limit: mockLimit,
+  };
 
-Object.values(chain).forEach((fn) => (fn as ReturnType<typeof vi.fn>).mockReturnValue(chain));
+  Object.values(chain).forEach((fn) =>
+    (fn as ReturnType<typeof vi.fn>).mockReturnValue(chain),
+  );
+
+  // Only expose the mocks the tests assert against; the rest live on `chain`.
+  return { mockUpdate, mockIn, mockEq, mockUpsert, chain };
+});
 
 vi.mock("../db/client.js", () => ({
   supabase: { from: vi.fn().mockReturnValue(chain) },

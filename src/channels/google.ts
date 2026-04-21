@@ -257,14 +257,17 @@ export async function pingGoogleSitemap(
       logger.info("Google sitemap ping", { status: response.status, correlationId });
     }
 
+    // `skipped` is an optional flag on GoogleEventResult; only set it when
+    // true so the non-deprecated paths leave it undefined (matches the
+    // `skipped?: boolean` contract).
     return {
       usedIndexingApi: false,
       results: events.map((e) => ({
         eventId: e.id,
         success: response.ok,
-        skipped: isDeprecated,
         httpStatus: response.status,
         responseBody,
+        ...(isDeprecated ? { skipped: true } : {}),
       })),
     };
   } catch (err) {
