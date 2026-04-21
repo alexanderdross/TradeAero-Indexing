@@ -60,6 +60,12 @@ jobs:
 
       - name: Run indexer
         env:
+          # Master kill switch. Intentionally sourced from `vars` (not `secrets`)
+          # so it can be scoped per GitHub Environment (e.g. `production` leaves
+          # it unset while trade.aero is still gated; `main`/`dev` sets it to
+          # "true"). The service exits cleanly when this isn't "true", so a
+          # missing var on a new branch is the safe default.
+          INDEXING_ENABLED: ${{ vars.INDEXING_ENABLED }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           INDEXNOW_API_KEY: ${{ secrets.INDEXNOW_API_KEY }}
