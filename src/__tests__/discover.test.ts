@@ -14,6 +14,9 @@ vi.mock("../config.js", () => ({
     indexing: { lookbackMinutes: 60, dryRun: false },
     indexnow: { apiKey: "test-key", batchSize: 100 },
     supabase: { url: "https://test.supabase.co", serviceRoleKey: "service-key" },
+    // url-builder reads config.site.baseUrl; without it buildEnglishUrl throws.
+    site: { baseUrl: "https://trade.aero" },
+    google: { serviceAccountJson: "", allLocales: false },
   },
   validateConfig: vi.fn(),
 }));
