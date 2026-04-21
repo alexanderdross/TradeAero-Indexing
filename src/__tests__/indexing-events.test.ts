@@ -4,17 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // level `const` they reference runs *after* the mock factory. Putting the mock
 // fns + chain builder inside `vi.hoisted` hoists them alongside the mock so the
 // factory can reach `chain` safely.
-const {
-  mockUpdate,
-  mockIn,
-  mockEq,
-  mockUpsert,
-  mockSelect,
-  mockOr,
-  mockOrder,
-  mockLimit,
-  chain,
-} = vi.hoisted(() => {
+const { mockUpdate, mockIn, mockEq, mockUpsert, chain } = vi.hoisted(() => {
   const mockUpdate = vi.fn();
   const mockIn = vi.fn();
   const mockEq = vi.fn();
@@ -40,17 +30,8 @@ const {
     (fn as ReturnType<typeof vi.fn>).mockReturnValue(chain),
   );
 
-  return {
-    mockUpdate,
-    mockIn,
-    mockEq,
-    mockUpsert,
-    mockSelect,
-    mockOr,
-    mockOrder,
-    mockLimit,
-    chain,
-  };
+  // Only expose the mocks the tests assert against; the rest live on `chain`.
+  return { mockUpdate, mockIn, mockEq, mockUpsert, chain };
 });
 
 vi.mock("../db/client.js", () => ({
