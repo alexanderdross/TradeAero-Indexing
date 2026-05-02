@@ -90,31 +90,37 @@ async function fetchFromTable(
 export async function fetchRecentlyPublishedListings(
   since: Date,
 ): Promise<DiscoveredListing[]> {
-  const [aircraft, parts, rentals, wanted] = await Promise.all([
+  // Rentals discovery hidden post-MVP — see TradeAero-Refactor's
+  // docs/MVP_HIDDEN_SECTIONS.md §2. Rental listings are still written
+  // to the DB (admins, direct-URL access), but they shouldn't be
+  // submitted to IndexNow / Google while public surfaces don't link
+  // to them. The `fetchFromTable("rental_listings", ...)` call below
+  // is left in place for the re-enable revert.
+  const [aircraft, parts, wanted] = await Promise.all([
     fetchFromTable("aircraft_listings", "aircraft", since, (q) =>
       q.eq("status", "active"),
     ),
     fetchFromTable("parts_listings", "part", since, (q) =>
       q.eq("status", "active"),
     ),
-    fetchFromTable("rental_listings", "rental", since, (q) =>
-      q.eq("status", "active"),
-    ),
+    // fetchFromTable("rental_listings", "rental", since, (q) =>
+    //   q.eq("status", "active"),
+    // ),
     // Wanted ads come from search_requests with publish_as_wanted = true
     fetchFromTable("search_requests", "wanted", since, (q) =>
       q.eq("status", "active").eq("publish_as_wanted", true),
     ),
   ]);
 
-  const total = aircraft.length + parts.length + rentals.length + wanted.length;
+  const total = aircraft.length + parts.length + wanted.length;
   logger.info("Discovered recently published listings", {
     aircraft: aircraft.length,
     parts: parts.length,
-    rentals: rentals.length,
+    rentals: 0, // hidden post-MVP
     wanted: wanted.length,
     total,
     since: since.toISOString(),
   });
 
-  return [...aircraft, ...parts, ...rentals, ...wanted];
+  return [...aircraft, ...parts, ...wanted];
 }
