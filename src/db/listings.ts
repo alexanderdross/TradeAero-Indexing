@@ -94,8 +94,23 @@ export async function fetchRecentlyPublishedListings(
   // docs/MVP_HIDDEN_SECTIONS.md §2. Rental listings are still written
   // to the DB (admins, direct-URL access), but they shouldn't be
   // submitted to IndexNow / Google while public surfaces don't link
-  // to them. The `fetchFromTable("rental_listings", ...)` call below
-  // is left in place for the re-enable revert.
+  // to them.
+  //
+  // Re-enable by:
+  //   1. Adding `rentals` back to the destructuring and the Promise.all().
+  //   2. Adding `+ rentals.length` to `total`.
+  //   3. Restoring `rentals: rentals.length` in the logger.info() call.
+  //   4. Adding `...rentals` back to the returned spread.
+  //
+  // Original (4-array) form was:
+  //   const [aircraft, parts, rentals, wanted] = await Promise.all([
+  //     fetchFromTable("aircraft_listings", "aircraft", since, (q) => q.eq("status", "active")),
+  //     fetchFromTable("parts_listings", "part", since, (q) => q.eq("status", "active")),
+  //     fetchFromTable("rental_listings", "rental", since, (q) => q.eq("status", "active")),
+  //     fetchFromTable("search_requests", "wanted", since, (q) =>
+  //       q.eq("status", "active").eq("publish_as_wanted", true),
+  //     ),
+  //   ]);
   const [aircraft, parts, wanted] = await Promise.all([
     fetchFromTable("aircraft_listings", "aircraft", since, (q) =>
       q.eq("status", "active"),
@@ -116,7 +131,7 @@ export async function fetchRecentlyPublishedListings(
   logger.info("Discovered recently published listings", {
     aircraft: aircraft.length,
     parts: parts.length,
-    rentals: 0, // hidden post-MVP
+    rentals: 0, // hidden post-MVP — was `rentals.length`
     wanted: wanted.length,
     total,
     since: since.toISOString(),
