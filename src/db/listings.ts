@@ -96,22 +96,16 @@ export async function fetchRecentlyPublishedListings(
   // submitted to IndexNow / Google while public surfaces don't link
   // to them.
   //
-  // Re-enable by:
-  //   1. Adding `rentals` back to the destructuring and the Promise.all().
-  //   2. Adding `+ rentals.length` to `total`.
-  //   3. Restoring `rentals: rentals.length` in the logger.info() call.
-  //   4. Adding `...rentals` back to the returned spread.
-  //
-  // Original (4-array) form was:
-  //   const [aircraft, parts, rentals, wanted] = await Promise.all([
-  //     fetchFromTable("aircraft_listings", "aircraft", since, (q) => q.eq("status", "active")),
-  //     fetchFromTable("parts_listings", "part", since, (q) => q.eq("status", "active")),
-  //     fetchFromTable("rental_listings", "rental", since, (q) => q.eq("status", "active")),
-  //     fetchFromTable("search_requests", "wanted", since, (q) =>
-  //       q.eq("status", "active").eq("publish_as_wanted", true),
-  //     ),
-  //   ]);
-  const [aircraft, parts, wanted] = await Promise.all([
+  // Re-enable by uncommenting the four `// rentals …` lines + the
+  // `fetchFromTable("rental_listings", ...)` call below, and
+  // re-commenting the matching marketplace-only lines that replace
+  // them.
+  const [
+    aircraft,
+    parts,
+    // rentals,
+    wanted,
+  ] = await Promise.all([
     fetchFromTable("aircraft_listings", "aircraft", since, (q) =>
       q.eq("status", "active"),
     ),
@@ -127,15 +121,18 @@ export async function fetchRecentlyPublishedListings(
     ),
   ]);
 
+  // const total = aircraft.length + parts.length + rentals.length + wanted.length;
   const total = aircraft.length + parts.length + wanted.length;
   logger.info("Discovered recently published listings", {
     aircraft: aircraft.length,
     parts: parts.length,
-    rentals: 0, // hidden post-MVP — was `rentals.length`
+    // rentals: rentals.length,
+    rentals: 0, // hidden post-MVP
     wanted: wanted.length,
     total,
     since: since.toISOString(),
   });
 
+  // return [...aircraft, ...parts, ...rentals, ...wanted];
   return [...aircraft, ...parts, ...wanted];
 }
