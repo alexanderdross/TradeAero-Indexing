@@ -32,6 +32,16 @@ updates:
         update-types:
           - minor
           - patch
+    # TypeScript majors land before typescript-eslint catches up: TS 6.0
+    # ships with a peer-dep / type-checker contract change that the v8
+    # line of typescript-eslint can't satisfy, so a solo `typescript`
+    # major bump ERESOLVEs (or fails lint) against the rest of the
+    # devDependencies. We hit this on Dependabot PR #14. Lift the
+    # ignore once typescript-eslint v9 (or whichever line officially
+    # supports TS 6) is in the lockfile.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     commit-message:
       prefix: chore(deps)
       prefix-development: chore(dev-deps)
