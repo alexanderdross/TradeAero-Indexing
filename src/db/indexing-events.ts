@@ -51,34 +51,101 @@ export async function fetchDueEvents(): Promise<IndexingEvent[]> {
 }
 
 /**
- * Increment attempt_count and record last_attempt_at for a batch of events.
- * Caller passes the in-memory events so we can do attempt_count + 1 without
- * a separate read (safe because this service runs single-process per cron run).
+ * Record last_attempt_at for a batch of events that are about to be submitted.
+ *
+ * NOTE: this does NOT touch attempt_count — the retry counter is incremented
+ * atomically inside markEventFailed (and markEventsSuccess) as part of the
+ * SAME statement that sets the event's status, so the count and the retry
+ * decision can never desync. This function only timestamps the attempt.
+ *
+ * Errors from the individual UPDATEs are captured and logged (never swallowed)
+ * and the count of failures is returned so callers can react if desired.
  */
 export async function markEventsAttempted(
-  events: Pick<IndexingEvent, "id" | "attempt_count">[],
-): Promise<void> {
-  if (events.length === 0) return;
+  events: Pick<IndexingEvent, "id">[],
+): Promise<{ failed: number }> {
+  if (events.length === 0) return { failed: 0 };
   const now = new Date().toISOString();
-  await Promise.all(
-    events.map(({ id, attempt_count }) =>
+  const results = await Promise.allSettled(
+    events.map(({ id }) =>
       supabase
         .from("indexing_events")
-        .update({ attempt_count: attempt_count + 1, last_attempt_at: now })
-        .eq("id", id),
+        .update({ last_attempt_at: now })
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) {
+            throw new Error(error.message);
+          }
+        }),
     ),
   );
+
+  let failed = 0;
+  results.forEach((result, i) => {
+    if (result.status === "rejected") {
+      failed += 1;
+      logger.warn("markEventsAttempted: failed to record attempt", {
+        id: events[i].id,
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
+      });
+    }
+  });
+  return { failed };
 }
 
 /**
  * Mark a batch of events as successfully submitted.
+ *
+ * `attempt_count` is bumped to reflect the attempt that just succeeded so the
+ * stored count is always consistent with reality.
  */
 export async function markEventsSuccess(
   ids: string[],
   responseCode: number,
   responseBody: string,
+  attemptCounts?: Record<string, number>,
 ): Promise<void> {
   if (ids.length === 0) return;
+
+  // When attemptCounts are supplied each event may have a different new
+  // attempt_count, so issue one UPDATE per event; otherwise a single batched
+  // UPDATE is enough.
+  if (attemptCounts) {
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        supabase
+          .from("indexing_events")
+          .update({
+            status: "success",
+            response_code: responseCode,
+            response_body: responseBody.slice(0, 500),
+            error_message: null,
+            next_retry_at: FAR_FUTURE,
+            attempt_count: attemptCounts[id],
+          })
+          .eq("id", id)
+          .then(({ error }) => {
+            if (error) throw new Error(error.message);
+          }),
+      ),
+    );
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        logger.warn("markEventsSuccess error", {
+          id: ids[i],
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
+        });
+      }
+    });
+    return;
+  }
+
   const { error } = await supabase
     .from("indexing_events")
     .update({
@@ -97,6 +164,13 @@ export async function markEventsSuccess(
 
 /**
  * Mark a single event as failed and schedule its next retry.
+ *
+ * The new `attempt_count` is written in the SAME UPDATE that sets the status,
+ * so the persisted retry counter and the retry/skip decision derived from it
+ * can never desync (no separate increment step that could fail independently).
+ *
+ * @param newAttemptCount - attempt_count AFTER this failed attempt. The caller
+ *   derives `skip` / `nextRetryAt` from this same value.
  * When skip=true, marks as 'skipped' with no further retry.
  */
 export async function markEventFailed(
@@ -105,15 +179,21 @@ export async function markEventFailed(
   responseBody: string,
   nextRetryAt: Date | null,
   skip = false,
+  newAttemptCount?: number,
 ): Promise<void> {
+  const update: Record<string, unknown> = {
+    status: skip ? "skipped" : "failed",
+    response_code: responseCode,
+    response_body: responseBody.slice(0, 500),
+    next_retry_at: skip ? FAR_FUTURE : (nextRetryAt?.toISOString() ?? FAR_FUTURE),
+  };
+  if (newAttemptCount !== undefined) {
+    update.attempt_count = newAttemptCount;
+  }
+
   const { error } = await supabase
     .from("indexing_events")
-    .update({
-      status: skip ? "skipped" : "failed",
-      response_code: responseCode,
-      response_body: responseBody.slice(0, 500),
-      next_retry_at: skip ? FAR_FUTURE : (nextRetryAt?.toISOString() ?? FAR_FUTURE),
-    })
+    .update(update)
     .eq("id", id);
 
   if (error) {
