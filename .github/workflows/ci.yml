@@ -55,9 +55,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      # Gate at `critical` for the initial rollout — any existing
-      # high-severity backlog will be cleared by Dependabot's weekly
-      # PRs (see .github/dependabot.yml). Tighten to `--audit-level=high`
-      # once the backlog is empty so newly-introduced high CVEs block
-      # merge.
-      - run: npm audit --audit-level=critical
+      # Gate at `high` so newly-introduced high or critical CVEs block
+      # merge. Existing backlog is kept clear by Dependabot's weekly PRs
+      # (see .github/dependabot.yml).
+      - run: npm audit --audit-level=high
