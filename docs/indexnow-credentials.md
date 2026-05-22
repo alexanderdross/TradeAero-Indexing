@@ -59,11 +59,21 @@ The file must be hosted at `https://trade.aero/{key}.txt` and contain **only the
 
 ## Current credentials
 
+The literal key value is intentionally NOT stored in this repo. The IndexNow
+key is public-by-design (it is served at a well-known path on the domain), but
+keeping the canonical value out of source control avoids it drifting out of
+sync with the deployed secret. The authoritative copy lives in the
+`INDEXNOW_API_KEY` GitHub Actions secret, and the matching verification file is
+served at `https://trade.aero/{key}.txt`.
+
 | Secret | Location |
 |---|---|
-| `INDEXNOW_API_KEY` | GitHub Actions secret on TradeAero-Indexing |
-| Verification file | `public/dae83f2c776a45ffa42825f4f1f523dc.txt` in TradeAero-Refactor |
-| Live URL | `https://trade.aero/dae83f2c776a45ffa42825f4f1f523dc.txt` |
+| `INDEXNOW_API_KEY` | GitHub Actions secret on TradeAero-Indexing (authoritative) |
+| Verification file | `public/{INDEXNOW_API_KEY}.txt` in TradeAero-Refactor |
+| Live URL | `https://trade.aero/{INDEXNOW_API_KEY}.txt` |
+
+To discover the current key in use, read the `INDEXNOW_API_KEY` GitHub Actions
+secret, or `curl` the well-known verification URL once you know the filename.
 
 ---
 
