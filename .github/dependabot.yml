@@ -1,0 +1,78 @@
+# Dependabot configuration.
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Weekly cadence is intentional — daily PR noise outweighs the value for
+# a small worker-style service. Security advisories are exempt from the
+# schedule and land as soon as Dependabot picks them up.
+
+version: 2
+updates:
+  # Application dependencies (npm)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    # Group non-major bumps into a single PR per week to keep review
+    # overhead bounded. Major bumps still come as individual PRs so
+    # each one gets a deliberate review.
+    groups:
+      production-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    # Toolchain-coupled majors that we can't take solo:
+    #
+    # - typescript 6.0 ships with a peer-dep / type-checker contract
+    #   change that the v8 line of typescript-eslint can't satisfy, so a
+    #   solo bump ERESOLVEs / fails lint (PR #14).
+    # - eslint / @eslint/js 10 require typescript-eslint v9, which isn't
+    #   in the lockfile yet — bumping either solo fails the ESLint stack
+    #   resolution and breaks `npm run lint` (PR #19).
+    # - @types/node tracks the Node engine (Node 22 LTS in CI); the v25
+    #   line drifts ahead of the runtime and Dependabot re-opens the bump
+    #   weekly otherwise (PR #20).
+    #
+    # Lift each entry once the rest of the toolchain has caught up —
+    # typescript-eslint v9 unlocks typescript + eslint + @eslint/js
+    # together.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      - dependency-name: "@eslint/js"
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(dev-deps)
+      include: scope
+
+  # GitHub Actions used in .github/workflows/*
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore(ci)
+      include: scope

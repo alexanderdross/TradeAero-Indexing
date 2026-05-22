@@ -15,8 +15,8 @@ jobs:
     name: Lint (ESLint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm install
@@ -26,8 +26,8 @@ jobs:
     name: Test (Vitest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm install
@@ -37,9 +37,27 @@ jobs:
     name: Typecheck (tsc)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm install
       - run: npx tsc --noEmit
+
+  audit:
+    name: Dependency audit (npm audit)
+    runs-on: ubuntu-latest
+    # `npm audit` doesn't need a node_modules install — runs against the
+    # lockfile directly. Keep it standalone so it doesn't pad the other
+    # jobs' minutes.
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      # Gate at `critical` for the initial rollout — any existing
+      # high-severity backlog will be cleared by Dependabot's weekly
+      # PRs (see .github/dependabot.yml). Tighten to `--audit-level=high`
+      # once the backlog is empty so newly-introduced high CVEs block
+      # merge.
+      - run: npm audit --audit-level=critical
