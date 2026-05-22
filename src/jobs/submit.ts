@@ -67,10 +67,9 @@ async function processIndexNowEvents(
   // Flatten all locale URLs from all events into one IndexNow batch
   const allUrls = events.flatMap((e) => (e.submitted_urls as string[]) ?? [e.url]);
 
-  // Record attempt before calling external API
-  await markEventsAttempted(events);
-
   if (config.indexing.dryRun) {
+    // Dry runs must NOT mutate attempt_count or last_attempt_at — they only
+    // validate URL generation. Skip markEventsAttempted entirely here.
     logger.info("[DRY RUN] Would submit to IndexNow", {
       listingCount: events.length,
       urlCount: allUrls.length,
@@ -82,10 +81,19 @@ async function processIndexNowEvents(
     return;
   }
 
+  // Record the attempt timestamp before calling the external API. The
+  // attempt_count itself is bumped atomically in markEventFailed/markEventsSuccess.
+  await markEventsAttempted(events);
+
   const result = await submitToIndexNow(allUrls, correlationId);
 
   if (result.success) {
-    await markEventsSuccess(events.map((e) => e.id), result.httpStatus, result.responseBody);
+    await markEventsSuccess(
+      events.map((e) => e.id),
+      result.httpStatus,
+      result.responseBody,
+      Object.fromEntries(events.map((e) => [e.id, e.attempt_count + 1])),
+    );
     stats.indexnowSuccess = events.length;
   } else {
     for (const event of events) {
@@ -97,6 +105,7 @@ async function processIndexNowEvents(
         result.responseBody,
         skip ? null : computeNextRetryAt(newCount),
         skip,
+        newCount,
       );
     }
     stats.indexnowFailed = events.length;
@@ -108,9 +117,8 @@ async function processGoogleEvents(
   correlationId: string,
   stats: SubmitStats,
 ): Promise<void> {
-  await markEventsAttempted(events);
-
   if (config.indexing.dryRun) {
+    // Dry runs must NOT mutate attempt_count or last_attempt_at.
     const useApi = !!config.google.serviceAccountJson;
     logger.info("[DRY RUN] Would submit to Google", {
       eventCount: events.length,
@@ -123,6 +131,10 @@ async function processGoogleEvents(
     return;
   }
 
+  // Record the attempt timestamp before calling the external API. The
+  // attempt_count itself is bumped atomically in markEventFailed/markEventsSuccess.
+  await markEventsAttempted(events);
+
   // Choose method based on whether a service account is configured
   const { serviceAccountJson, allLocales } = config.google;
   const batchResult = serviceAccountJson
@@ -132,8 +144,14 @@ async function processGoogleEvents(
   // Apply per-event results
   for (const result of batchResult.results) {
     const event = events.find((e) => e.id === result.eventId)!;
+    const newCount = event.attempt_count + 1;
     if (result.success) {
-      await markEventsSuccess([event.id], result.httpStatus, result.responseBody);
+      await markEventsSuccess(
+        [event.id],
+        result.httpStatus,
+        result.responseBody,
+        { [event.id]: newCount },
+      );
       stats.googleSuccess++;
     } else if (result.skipped) {
       // Endpoint deprecated or permanently unavailable — skip without retry
@@ -143,10 +161,10 @@ async function processGoogleEvents(
         result.responseBody,
         null,
         true, // skip = true
+        newCount,
       );
       stats.googleFailed++;
     } else {
-      const newCount = event.attempt_count + 1;
       const skip = shouldAbortRetrying(newCount);
       await markEventFailed(
         event.id,
@@ -154,6 +172,7 @@ async function processGoogleEvents(
         result.responseBody,
         skip ? null : computeNextRetryAt(newCount),
         skip,
+        newCount,
       );
       stats.googleFailed++;
     }
