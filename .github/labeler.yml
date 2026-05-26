@@ -1,0 +1,22 @@
+# Path -> area:* mapping. Only cross-cutting area labels are auto-applied here;
+# area: indexing is intentionally omitted because every PR in this repo is
+# implicitly about indexing (apply manually for cross-repo discoverability).
+
+"area: deps":
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'pnpm-lock.yaml'
+          - 'package-lock.json'
+          - '**/package.json'
+          - '**/pnpm-lock.yaml'
+          - '**/package-lock.json'
+          - '.github/dependabot.yml'
+
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/actions/**'
+          - '.github/labels.yml'
+          - '.github/labeler.yml'
