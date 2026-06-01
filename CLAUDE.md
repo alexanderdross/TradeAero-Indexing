@@ -78,6 +78,7 @@ npm run lint       # ESLint
 | `INDEXING_LOOKBACK_MINUTES` | No | `60` | How far back to look for new listings |
 | `INDEXING_DRY_RUN` | No | `false` | Discover and enqueue but skip external API calls |
 | `INDEXNOW_BATCH_SIZE` | No | `100` | Max listings per IndexNow batch |
+| `HEARTBEAT_URL` | No | — | Dead-man's-switch URL (healthchecks.io / cronitor). Pinged on a successful run; `<url>/fail` pinged on a fatal error. Unset = no-op. |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 
 ## GitHub Actions Secrets
@@ -87,6 +88,7 @@ npm run lint       # ESLint
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key |
 | `INDEXNOW_API_KEY` | Must match `public/{key}.txt` hosted on trade.aero |
+| `HEARTBEAT_URL` | Optional. Dead-man's-switch ping target so an external monitor alerts when this `*/15` schedule silently stops firing (see the 2026-05-28 stall — a schedule that never runs emits no logs and no error). |
 
 ## GitHub Actions Workflow
 
