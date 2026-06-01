@@ -120,9 +120,9 @@ expects a ping on every run and alerts when one doesn't arrive.
   monitor stays green during quiet windows.
 
 **Setup**
-1. Create a check at healthchecks.io (or cronitor / Better Stack). Match the
-   cron: **period 15 min**, **grace 30 min**. Copy the ping URL
-   (e.g. `https://hc-ping.com/<uuid>`).
+1. Create a check at healthchecks.io (or cronitor / Better Stack). Set
+   **period 15 min** but a generous **grace ≈ 12 h** (see the cadence note
+   below). Copy the ping URL (e.g. `https://hc-ping.com/<uuid>`).
 2. Add it as an **Actions secret** named `HEARTBEAT_URL` in
    **Settings → Secrets and variables → Actions** (repository secret; or an
    environment secret if the `index` job is later scoped to a GitHub Environment).
@@ -134,6 +134,16 @@ expects a ping on every run and alerts when one doesn't arrive.
 - Break a secret and re-run → a `/fail` ping is recorded; restore it.
 - Disable the schedule / wait past the grace window → the monitor sends a *down*
   alert (route it via the check's Integrations).
+
+**Cadence note — why grace is hours, not minutes.** GitHub delivers
+`schedule:` triggers on a heavily throttled best-effort basis: in practice this
+workflow fires only a handful of times a day with gaps of **2–6 h**, not every
+15 min (observed 2026-06-01: runs at 01:43, 04:00, 09:20, 15:07, 20:48). A tight
+grace (e.g. 30 min) would false-alarm constantly. A ~12 h grace rides out normal
+throttling while still catching a genuine multi-day stall (like 2026-05-28)
+within half a day. If you ever need true ~15-min freshness, don't lean on the
+GitHub cron — the Refactor app's publish webhook already enqueues indexing in
+real time on publish; the cron is only a slow backstop.
 
 ## Main Flow
 
