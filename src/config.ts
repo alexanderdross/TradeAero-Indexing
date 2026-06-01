@@ -39,6 +39,16 @@ export const config = {
     /** When true, skip external API calls — useful for validating URL generation */
     dryRun: process.env.INDEXING_DRY_RUN === "true",
   },
+  monitoring: {
+    /**
+     * Optional dead-man's-switch URL (healthchecks.io / cronitor / Better Uptime).
+     * Pinged after every successful run; `<url>/fail` is pinged on a fatal error.
+     * When unset, the heartbeat is a no-op. Lets an external monitor alert when
+     * the GitHub Actions schedule silently stops firing — the failure mode behind
+     * the 2026-05-28 stall (no run = no logs = no alert without this).
+     */
+    heartbeatUrl: process.env.HEARTBEAT_URL ?? "",
+  },
 } as const;
 
 export function validateConfig(): void {

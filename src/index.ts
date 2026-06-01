@@ -2,6 +2,7 @@ import { validateConfig, config } from "./config.js";
 import { discoverAndEnqueue } from "./jobs/discover.js";
 import { submitPendingEvents } from "./jobs/submit.js";
 import { logger } from "./utils/logger.js";
+import { pingHeartbeat } from "./utils/heartbeat.js";
 
 async function main(): Promise<void> {
   // Pre-prod kill switch. The `production` GitHub Environment leaves
@@ -40,12 +41,22 @@ async function main(): Promise<void> {
     ...stats,
     durationMs,
   });
+
+  // Dead-man's-switch: signal a healthy completed run so an external monitor
+  // can alert if the GitHub Actions schedule ever stops firing (no-op unless
+  // HEARTBEAT_URL is configured).
+  await pingHeartbeat(config.monitoring.heartbeatUrl, "success", correlationId);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   logger.error("Fatal error", {
     error: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });
+  await pingHeartbeat(
+    config.monitoring.heartbeatUrl,
+    "fail",
+    process.env.GITHUB_RUN_ID ?? "unknown",
+  );
   process.exit(1);
 });

@@ -75,5 +75,10 @@ jobs:
           GOOGLE_INDEXING_ALL_LOCALES: ${{ vars.GOOGLE_INDEXING_ALL_LOCALES || 'false' }}
           INDEXING_LOOKBACK_MINUTES: ${{ github.event.inputs.lookback_minutes || '60' }}
           INDEXING_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          # Optional dead-man's-switch (healthchecks.io / cronitor). When set, a
+          # successful run pings this URL and a fatal error pings `<url>/fail`, so
+          # an external monitor alerts if this schedule ever silently stops firing
+          # (the 2026-05-28 stall produced no run, no logs, and no alert).
+          HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}
           LOG_LEVEL: "info"
         run: node dist/index.js
