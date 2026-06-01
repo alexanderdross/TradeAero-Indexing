@@ -100,6 +100,41 @@ npm run lint       # ESLint
 - `lookback_minutes` (default: `60`; use `10080` for a 1-week backfill)
 - `dry_run` (`false` / `true`)
 
+## Monitoring (heartbeat / dead-man's-switch)
+
+A GitHub-hosted `schedule:` cron can silently stop firing for days (it did,
+2026-05-28 → 06-01) — a workflow that never runs emits no logs and no error, so
+nothing alerts. The optional `HEARTBEAT_URL` closes that gap: an external monitor
+expects a ping on every run and alerts when one doesn't arrive.
+
+**Behaviour** (`src/utils/heartbeat.ts`, wired in `src/index.ts`):
+- Successful run → `POST HEARTBEAT_URL`.
+- Fatal error → `POST <HEARTBEAT_URL>/fail`.
+- Best-effort: 5 s timeout, never throws — monitoring can't fail a run.
+- No-op when `HEARTBEAT_URL` is unset. The URL itself is the credential (no
+  separate token); store it as a secret.
+- The success ping fires only on a *completed* run with `INDEXING_ENABLED="true"`
+  — a kill-switched (gated) run early-exits and does **not** ping. Don't point a
+  production monitor at a deliberately-disabled environment.
+- An **idle** run (no new listings) still completes and pings success, so the
+  monitor stays green during quiet windows.
+
+**Setup**
+1. Create a check at healthchecks.io (or cronitor / Better Stack). Match the
+   cron: **period 15 min**, **grace 30 min**. Copy the ping URL
+   (e.g. `https://hc-ping.com/<uuid>`).
+2. Add it as an **Actions secret** named `HEARTBEAT_URL` in
+   **Settings → Secrets and variables → Actions** (repository secret; or an
+   environment secret if the `index` job is later scoped to a GitHub Environment).
+   The workflow already passes `HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}`.
+3. (Local) optionally set `HEARTBEAT_URL` in `.env`.
+
+**Verify**
+- Manually dispatch the workflow → the check flips to *up*.
+- Break a secret and re-run → a `/fail` ping is recorded; restore it.
+- Disable the schedule / wait past the grace window → the monitor sends a *down*
+  alert (route it via the check's Integrations).
+
 ## Main Flow
 
 ```
