@@ -68,7 +68,7 @@ The worker is **not** deployed as a service. It runs as a scheduled GitHub
 Actions job:
 
 - **Workflow:** `.github/workflows/index-listings.yml`
-- **Trigger:** cron every 15 minutes, plus manual `workflow_dispatch`
+- **Trigger:** cron every 30 minutes, plus manual `workflow_dispatch`
 - **Manual dispatch inputs:** `lookback_minutes` (default `60`; use `10080`
   for a one-week backfill) and `dry_run` (`false` / `true`)
 - **Timeout:** 10 minutes per run
