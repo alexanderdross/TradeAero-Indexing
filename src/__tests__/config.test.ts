@@ -86,7 +86,7 @@ describe("config defaults", () => {
   it("applies documented defaults when optional vars are unset", async () => {
     const { config } = await loadConfig(REQUIRED);
     expect(config.indexnow.batchSize).toBe(100);
-    expect(config.indexing.lookbackMinutes).toBe(60);
+    expect(config.indexing.lookbackMinutes).toBe(1440);
     expect(config.indexing.dryRun).toBe(false);
     expect(config.site.baseUrl).toBe("https://trade.aero");
     expect(config.google.allLocales).toBe(false);
@@ -104,12 +104,12 @@ describe("config defaults", () => {
     const { config } = await loadConfig({
       ...REQUIRED,
       INDEXNOW_BATCH_SIZE: "250",
-      INDEXING_LOOKBACK_MINUTES: "1440",
+      INDEXING_LOOKBACK_MINUTES: "720",
       INDEXING_DRY_RUN: "true",
       GOOGLE_INDEXING_ALL_LOCALES: "true",
     });
     expect(config.indexnow.batchSize).toBe(250);
-    expect(config.indexing.lookbackMinutes).toBe(1440);
+    expect(config.indexing.lookbackMinutes).toBe(720);
     expect(config.indexing.dryRun).toBe(true);
     expect(config.google.allLocales).toBe(true);
   });

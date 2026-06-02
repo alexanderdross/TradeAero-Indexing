@@ -34,8 +34,14 @@ export const config = {
     allLocales: process.env.GOOGLE_INDEXING_ALL_LOCALES === "true",
   },
   indexing: {
-    /** Lookback window in minutes for detecting newly published listings */
-    lookbackMinutes: Number(process.env.INDEXING_LOOKBACK_MINUTES ?? 60),
+    /**
+     * Lookback window in minutes for detecting newly published listings.
+     * Default 1440 (24h), not 60: the GitHub Actions schedule is throttled to
+     * runs hours apart, so a 60-minute window dropped listings updated between
+     * runs. Must exceed the worst-case inter-run gap. dedupe_key keeps the wider
+     * re-scan idempotent (already-indexed listings are skipped at insert).
+     */
+    lookbackMinutes: Number(process.env.INDEXING_LOOKBACK_MINUTES ?? 1440),
     /** When true, skip external API calls — useful for validating URL generation */
     dryRun: process.env.INDEXING_DRY_RUN === "true",
   },
