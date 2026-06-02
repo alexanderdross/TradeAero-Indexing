@@ -30,6 +30,43 @@ export async function upsertIndexingEvent(
   return true;
 }
 
+/** Max rows per bulk upsert request — keeps payloads sane on large backfills. */
+const UPSERT_CHUNK_SIZE = 500;
+
+/**
+ * Bulk-insert new indexing events, chunked. Like upsertIndexingEvent but for
+ * many rows in one round-trip per chunk instead of one per event — essential
+ * for backfills (thousands of rows): a per-row loop times out the 10-min job
+ * and makes reruns super-linear (every already-enqueued row costs another
+ * round-trip). With `ignoreDuplicates`, the upsert returns only the rows it
+ * actually inserted, so the selected length is the true newly-enqueued count.
+ *
+ * Returns the number of rows newly inserted (duplicates skipped silently).
+ */
+export async function upsertIndexingEvents(
+  events: NewIndexingEvent[],
+): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < events.length; i += UPSERT_CHUNK_SIZE) {
+    const chunk = events.slice(i, i + UPSERT_CHUNK_SIZE);
+    const { data, error } = await supabase
+      .from("indexing_events")
+      .upsert(chunk, { onConflict: "dedupe_key", ignoreDuplicates: true })
+      .select("id");
+
+    if (error) {
+      logger.warn("upsertIndexingEvents chunk error", {
+        error: error.message,
+        chunkStart: i,
+        chunkSize: chunk.length,
+      });
+      continue;
+    }
+    inserted += data?.length ?? 0;
+  }
+  return inserted;
+}
+
 /**
  * Fetch all events that are ready for submission:
  * - status = 'pending', OR

@@ -87,6 +87,7 @@ describe("config defaults", () => {
     const { config } = await loadConfig(REQUIRED);
     expect(config.indexnow.batchSize).toBe(100);
     expect(config.indexing.lookbackMinutes).toBe(1440);
+    expect(config.indexing.discoveryLimit).toBe(500);
     expect(config.indexing.dryRun).toBe(false);
     expect(config.site.baseUrl).toBe("https://trade.aero");
     expect(config.google.allLocales).toBe(false);

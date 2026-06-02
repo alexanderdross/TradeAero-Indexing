@@ -44,6 +44,13 @@ export const config = {
     lookbackMinutes: Number(process.env.INDEXING_LOOKBACK_MINUTES ?? 1440),
     /** When true, skip external API calls — useful for validating URL generation */
     dryRun: process.env.INDEXING_DRY_RUN === "true",
+    /**
+     * Max rows fetched per source table per run (ordered by updated_at DESC).
+     * Default 500 keeps normal runs bounded. Raise it (e.g. for a historical
+     * backfill) so the older, never-indexed backlog isn't crowded out below the
+     * cap. dedupe_key keeps the wider scan idempotent.
+     */
+    discoveryLimit: Number(process.env.INDEXING_DISCOVERY_LIMIT ?? 500),
   },
   monitoring: {
     /**

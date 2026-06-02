@@ -27,6 +27,11 @@ on:
         options:
           - "false"
           - "true"
+      discovery_limit:
+        description: "Max rows per source table per run (default 500; raise for a historical backfill)"
+        required: false
+        default: "500"
+        type: string
 
 env:
   NODE_VERSION: "22"
@@ -80,6 +85,7 @@ jobs:
           # re-submission and no wasted Google quota.
           INDEXING_LOOKBACK_MINUTES: ${{ github.event.inputs.lookback_minutes || '1440' }}
           INDEXING_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          INDEXING_DISCOVERY_LIMIT: ${{ github.event.inputs.discovery_limit || '500' }}
           # Optional dead-man's-switch (healthchecks.io / cronitor). When set, a
           # successful run pings this URL and a fatal error pings `<url>/fail`, so
           # an external monitor alerts if this schedule ever silently stops firing

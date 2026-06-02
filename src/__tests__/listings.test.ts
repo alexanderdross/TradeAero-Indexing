@@ -34,6 +34,7 @@ interface QueryBuilder {
   gte: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
+  range: ReturnType<typeof vi.fn>;
   not: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   then: (resolve: (value: QueryResult) => unknown) => Promise<unknown>;
@@ -48,6 +49,7 @@ function makeQueryBuilder(result: QueryResult): QueryBuilder {
   builder.gte = vi.fn(chain);
   builder.order = vi.fn(chain);
   builder.limit = vi.fn(chain);
+  builder.range = vi.fn(chain);
   builder.not = vi.fn(chain);
   builder.eq = vi.fn(chain);
   builder.then = (resolve) => Promise.resolve(result).then(resolve);

@@ -33,16 +33,31 @@ before accepting URLs.
 
 ## 2. Launch Day — Backfill All Existing Listings
 
-**Status:** Pending — must be done manually on launch day.
+**Status:** ✅ Enqueued (2026-06-02). `missed_total` (Q5a in
+`supabase/monitoring.sql`) is now **0** — every active, fully-translated listing
+has indexing_events rows. Submission then drains automatically (see note below).
 
-The indexing service only picks up listings published within the lookback window.
-All listings that existed before launch need a one-time backfill submission.
+**What happened:** ~1,457 active, fully-translated listings (~59% of ~2,476
+eligible, almost all `parts`) had **zero** indexing_events rows — the launch-day
+historical backfill was never completed as inventory grew. Backfill runs with
+`lookback_minutes=525960` cleared it once two ceilings were fixed:
+1. a hardcoded 500-row/table discovery cap (→ `INDEXING_DISCOVERY_LIMIT`), and
+2. PostgREST's ~1000-row server cap on a single response — discovery now
+   **paginates** with `.range()`, so it can reach the whole table.
 
-**What to ask:**
-- On launch day, trigger a manual run via GitHub Actions:
-  - `lookback_minutes`: `525960` (≈ 1 year) or the age of the oldest listing
-  - `dry_run`: `false`
-- Confirm `indexnow_events` table shows `status = 'success'` for all listings.
+**Submission drain (automatic, no action needed):**
+- **IndexNow** clears fast — the whole batch goes in one or two scheduled runs
+  (`fetchDueEvents` processes 1000/run; IndexNow auto-chunks at 10k URLs).
+- **Google** is quota-bound at ~200 URL/day, so the ~1,400 Google events spread
+  over ~7 days via the normal retry/backoff; events past the retry budget settle
+  as `skipped` (expected — not a hard failure). Request a Google quota increase
+  (item #3) to speed this up.
+- Watch Q3 (hard-failure rate) and Q5a (`missed_total`) in `supabase/monitoring.sql`.
+
+**To re-backfill in future** (e.g. after a long outage): manual dispatch with
+`dry_run: false` (NOT dry — a dry run enqueues then marks `success`/`dry-run`
+without submitting, and `dedupe_key` blocks the real submission),
+`lookback_minutes: 525960`, `discovery_limit` ≥ the largest table's row count.
 
 ---
 
@@ -153,7 +168,7 @@ Delete these branches after merging the PRs:
 | # | Topic | Blocker for launch? | Who |
 |---|---|---|---|
 | 1 | IndexNow domain verification | ✅ Done — verified live (403s stopped 2026-04-20) | Dev/Ops |
-| 2 | Backfill existing listings | Yes — run on launch day | Dev/Ops |
+| 2 | Backfill existing listings | ✅ Enqueued — missed_total=0; Google submission drains over ~7d (quota) | Dev/Ops |
 | 3 | Google quota increase | Soft — retry logic covers it | Dev/Ops |
 | 4 | Confirm `SITE_BASE_URL` not overridden | Yes | Dev/Ops |
 | 5 | Confirm `INDEXING_DRY_RUN` not stuck on | Yes | Dev/Ops |

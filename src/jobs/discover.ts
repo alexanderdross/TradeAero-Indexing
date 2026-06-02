@@ -1,10 +1,10 @@
 import { config } from "../config.js";
 import { fetchRecentlyPublishedListings } from "../db/listings.js";
-import { upsertIndexingEvent } from "../db/indexing-events.js";
+import { upsertIndexingEvents } from "../db/indexing-events.js";
 import { computeDedupeKey } from "../utils/dedupe.js";
 import { buildAllLocaleUrls, buildEnglishUrl } from "../utils/url-builder.js";
 import { logger } from "../utils/logger.js";
-import type { Channel } from "../types.js";
+import type { Channel, NewIndexingEvent } from "../types.js";
 
 const CHANNELS: Channel[] = ["indexnow", "google"];
 
@@ -37,16 +37,17 @@ export async function discoverAndEnqueue(correlationId: string): Promise<number>
     return 0;
   }
 
-  let enqueued = 0;
-
+  // Build every event up front, then bulk-insert in chunks (one round-trip per
+  // chunk). A per-row upsert loop is fine for a 15-min run's handful of new
+  // listings but times out on a backfill of thousands; dedupe_key still makes
+  // the insert idempotent, so already-enqueued listings are skipped silently.
+  const newEvents: NewIndexingEvent[] = [];
   for (const listing of listings) {
     const englishUrl = buildEnglishUrl(listing.entityType, listing.slugs.en);
     const allLocaleUrls = buildAllLocaleUrls(listing.entityType, listing.slugs);
 
     for (const channel of CHANNELS) {
-      const dedupeKey = computeDedupeKey(listing.entityId, channel);
-
-      const inserted = await upsertIndexingEvent({
+      newEvents.push({
         entity_type: listing.entityType,
         entity_id: listing.entityId,
         url: englishUrl,
@@ -54,14 +55,13 @@ export async function discoverAndEnqueue(correlationId: string): Promise<number>
         published_at: listing.publishedAt,
         channel,
         status: "pending",
-        dedupe_key: dedupeKey,
+        dedupe_key: computeDedupeKey(listing.entityId, channel),
         correlation_id: correlationId,
       });
-
-      if (inserted) enqueued++;
-      // If dedupe_key already exists, upsert silently skips — listing was already indexed
     }
   }
+
+  const enqueued = await upsertIndexingEvents(newEvents);
 
   logger.info("Enqueue complete", {
     listingsFound: listings.length,
