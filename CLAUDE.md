@@ -78,7 +78,7 @@ npm run lint       # ESLint
 | `SUPABASE_URL` | Yes | — | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | — | Service role JWT (bypasses RLS) |
 | `INDEXNOW_API_KEY` | Yes | — | Must match content of `public/{key}.txt` in TradeAero-Refactor |
-| `INDEXING_LOOKBACK_MINUTES` | No | `60` | How far back to look for new listings |
+| `INDEXING_LOOKBACK_MINUTES` | No | `1440` | How far back to look for new listings. 24h, not 60m: the schedule is throttled to runs hours apart, so a 60-min window dropped listings updated between runs. Idempotent via `dedupe_key`. |
 | `INDEXING_DRY_RUN` | No | `false` | Discover and enqueue but skip external API calls |
 | `INDEXNOW_BATCH_SIZE` | No | `100` | Max listings per IndexNow batch |
 | `HEARTBEAT_URL` | No | — | Dead-man's-switch URL (healthchecks.io / cronitor). Pinged on a healthy run; `<url>/fail` pinged on a fatal error or a silently-failing run. Unset = no-op. |
@@ -101,8 +101,10 @@ npm run lint       # ESLint
 | Index New Listings | Every 30 min + manual | 10 min | `group: index-listings`, `cancel-in-progress: false` |
 
 **Manual dispatch inputs:**
-- `lookback_minutes` (default: `60`; use `10080` for a 1-week backfill)
-- `dry_run` (`false` / `true`)
+- `lookback_minutes` (default: `1440` = 24h; use `10080` for a 1-week backfill)
+- `dry_run` (`false` / `true`) — ⚠️ a dry run still *enqueues* events but marks
+  them `success`/`dry-run` without submitting, and `dedupe_key` then blocks a
+  real submission. Don't dry-run a backfill you actually want indexed.
 
 ## Monitoring (heartbeat / dead-man's-switch)
 
