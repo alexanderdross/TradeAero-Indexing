@@ -93,11 +93,18 @@ order by channel, status;
 -- ---------------------------------------------------------------------------
 -- The one failure mode the event table can't show on its own: a listing that
 -- passes the translation gate (all 14 locale slugs) and is active, yet has NO
--- indexing_events row — i.e. discovery skipped it. Mirrors the gate in
--- src/db/listings.ts. Scoped to the last 7 days so it surfaces genuinely-missed
--- recent publishes without dredging the pre-service backfill backlog; widen the
--- interval to audit older data. (rental_listings intentionally excluded — hidden
--- post-MVP, same as discovery.)
+-- indexing_events row — i.e. discovery never enqueued it. Mirrors the gate in
+-- src/db/listings.ts. (rental_listings intentionally excluded — hidden post-MVP,
+-- same as discovery.)
+--
+-- Two numbers matter and they differ a lot:
+--   * total backlog  — every never-indexed gated listing (historical + recent).
+--                      Measured 2026-06-02: ~1,457. This is pre-service /
+--                      never-backfilled inventory; clearing it needs a wide
+--                      (~1y) lookback backfill, deferred by decision.
+--   * last-7d        — recently published/updated ones the normal pipeline
+--                      should have caught. This is the actionable, ongoing
+--                      signal; it should trend to ~0 now the lookback is 24h.
 with gated as (
   select 'aircraft'::text as entity_type, id::text as entity_id, updated_at
   from aircraft_listings
@@ -125,12 +132,24 @@ with gated as (
     and slug_cs is not null and slug_sv is not null and slug_nl is not null
     and slug_pt is not null and slug_ru is not null and slug_tr is not null
     and slug_el is not null and slug_no is not null
-)
-select g.entity_type, g.entity_id, g.updated_at
-from gated g
-where g.updated_at > now() - interval '7 days'
-  and not exists (
+),
+missed as (
+  select g.* from gated g
+  where not exists (
     select 1 from indexing_events e
     where e.entity_id = g.entity_id and e.entity_type = g.entity_type
   )
-order by g.updated_at desc;
+)
+-- 5a. Summary: total vs recent backlog (run this first).
+select
+  (select count(*) from missed)                                                    as missed_total,
+  (select count(*) from missed where updated_at > now() - interval '7 days')        as missed_last_7d,
+  (select count(*) from missed where updated_at > now() - interval '24 hours')      as missed_last_24h;
+
+-- 5b. Detail: the actionable recent misses (swap the interval to audit older data).
+-- with gated as ( ... ), missed as ( ... )  -- reuse the CTEs above
+-- select entity_type, entity_id, updated_at
+-- from missed
+-- where updated_at > now() - interval '7 days'
+-- order by updated_at desc;
+
