@@ -1,4 +1,5 @@
 import { supabase } from "./client.js";
+import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import type { DiscoveredListing, EntityType, SupportedLang } from "../types.js";
 
@@ -49,7 +50,10 @@ async function fetchFromTable(
     .select(SELECT_COLS)
     .gte("updated_at", since.toISOString())
     .order("updated_at", { ascending: false })
-    .limit(500);
+    // Per-table row cap. Default 500 is ample for normal 15-min runs; raise via
+    // INDEXING_DISCOVERY_LIMIT for a historical backfill, where the not-yet-indexed
+    // backlog has old updated_at and would otherwise rank below the cap (ordered desc).
+    .limit(config.indexing.discoveryLimit);
 
   // Apply translation gate: all 14 slug columns must be non-null
   for (const col of SLUG_COLS) {
