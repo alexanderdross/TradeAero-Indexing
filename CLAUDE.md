@@ -2,7 +2,7 @@
 
 ## Overview
 
-Standalone Node.js/TypeScript service that auto-submits newly published TradeAero listings to search engine indexing APIs. Runs every 15 minutes via GitHub Actions.
+Standalone Node.js/TypeScript service that auto-submits newly published TradeAero listings to search engine indexing APIs. Runs every 30 minutes via GitHub Actions.
 
 **What it does:**
 - Detects listings that became active and fully translated (all 14 locale slugs populated) within the lookback window
@@ -17,7 +17,7 @@ Standalone Node.js/TypeScript service that auto-submits newly published TradeAer
 - **Runtime**: Node.js 22+, TypeScript 5.7, ES modules
 - **Database**: Supabase PostgreSQL via `@supabase/supabase-js` (service role key bypasses RLS)
 - **HTTP**: Native `fetch` (no extra HTTP client)
-- **Scheduling**: GitHub Actions cron every 15 minutes + `workflow_dispatch`
+- **Scheduling**: GitHub Actions cron every 30 minutes + `workflow_dispatch`
 - **Testing**: Vitest
 
 ## Project Structure
@@ -57,7 +57,7 @@ supabase/
 docs/
   indexnow-credentials.md    # How to generate/rotate the IndexNow API key
 .github/workflows/
-  index-listings.yml          # Cron every 15 min + workflow_dispatch with dry_run input
+  index-listings.yml          # Cron every 30 min + workflow_dispatch with dry_run input
 ```
 
 ## Commands
@@ -92,13 +92,13 @@ npm run lint       # ESLint
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key |
 | `INDEXNOW_API_KEY` | Must match `public/{key}.txt` hosted on trade.aero |
-| `HEARTBEAT_URL` | Optional. Dead-man's-switch ping target so an external monitor alerts when this `*/15` schedule silently stops firing (see the 2026-05-28 stall — a schedule that never runs emits no logs and no error). |
+| `HEARTBEAT_URL` | Optional. Dead-man's-switch ping target so an external monitor alerts when this `*/30` schedule silently stops firing (see the 2026-05-28 stall — a schedule that never runs emits no logs and no error). |
 
 ## GitHub Actions Workflow
 
 | Workflow | Trigger | Timeout | Concurrency |
 |----------|---------|---------|-------------|
-| Index New Listings | Every 15 min + manual | 10 min | `group: index-listings`, `cancel-in-progress: false` |
+| Index New Listings | Every 30 min + manual | 10 min | `group: index-listings`, `cancel-in-progress: false` |
 
 **Manual dispatch inputs:**
 - `lookback_minutes` (default: `60`; use `10080` for a 1-week backfill)
@@ -147,7 +147,7 @@ discovery-side gap the event table can't show on its own.
 
 **Setup**
 1. Create a check at healthchecks.io (or cronitor / Better Stack). Set
-   **period 15 min** but a generous **grace ≈ 12 h** (see the cadence note
+   **period 30 min** but a generous **grace ≈ 12 h** (see the cadence note
    below). Copy the ping URL (e.g. `https://hc-ping.com/<uuid>`).
 2. Add it as an **Actions secret** named `HEARTBEAT_URL` in
    **Settings → Secrets and variables → Actions** (repository secret; or an
@@ -164,12 +164,12 @@ discovery-side gap the event table can't show on its own.
 **Cadence note — why grace is hours, not minutes.** GitHub delivers
 `schedule:` triggers on a heavily throttled best-effort basis: in practice this
 workflow fires only a handful of times a day with gaps of **2–6 h**, not every
-15 min (observed 2026-06-01: runs at 01:43, 04:00, 09:20, 15:07, 20:48). A tight
-grace (e.g. 30 min) would false-alarm constantly. A ~12 h grace rides out normal
-throttling while still catching a genuine multi-day stall (like 2026-05-28)
-within half a day. If you ever need true ~15-min freshness, don't lean on the
-GitHub cron — the Refactor app's publish webhook already enqueues indexing in
-real time on publish; the cron is only a slow backstop.
+30 min (observed 2026-06-01 while on `*/15`: runs at 01:43, 04:00, 09:20, 15:07,
+20:48). A tight grace (e.g. 30–60 min) would false-alarm constantly. A ~12 h
+grace rides out normal throttling while still catching a genuine multi-day stall
+(like 2026-05-28) within half a day. If you ever need near-real-time freshness,
+don't lean on the GitHub cron — the Refactor app's publish webhook already
+enqueues indexing in real time on publish; the cron is only a slow backstop.
 
 ## Main Flow
 
