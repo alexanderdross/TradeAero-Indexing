@@ -11,6 +11,9 @@ const SLUG_COLS = [
 
 const SELECT_COLS = `id, updated_at, ${SLUG_COLS.join(", ")}`;
 
+/** PostgREST caps a single response at ~1000 rows, so we page in 1000s. */
+const PAGE_SIZE = 1000;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToSlugs(row: Record<string, any>): Record<SupportedLang, string> {
   return {
@@ -44,43 +47,63 @@ async function fetchFromTable(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extraFilters?: (query: any) => any,
 ): Promise<DiscoveredListing[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query: any = supabase
-    .from(table)
-    .select(SELECT_COLS)
-    .gte("updated_at", since.toISOString())
-    .order("updated_at", { ascending: false })
-    // Per-table row cap. Default 500 is ample for normal 15-min runs; raise via
-    // INDEXING_DISCOVERY_LIMIT for a historical backfill, where the not-yet-indexed
-    // backlog has old updated_at and would otherwise rank below the cap (ordered desc).
-    .limit(config.indexing.discoveryLimit);
+  // Page through with .range() instead of a single .limit(): PostgREST caps any
+  // one response at ~1000 rows server-side, so .limit(5000) silently returns
+  // only 1000 and the older backlog (rank >1000 by updated_at) is unreachable.
+  // We keep paging until a short page (exhausted) or INDEXING_DISCOVERY_LIMIT.
+  // Normal runs use the small default and stop after one page.
+  const results: DiscoveredListing[] = [];
 
-  // Apply translation gate: all 14 slug columns must be non-null
-  for (const col of SLUG_COLS) {
-    query = query.not(col, "is", null);
-  }
+  for (let from = 0; from < config.indexing.discoveryLimit; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, config.indexing.discoveryLimit) - 1;
 
-  // Apply table-specific filters
-  if (extraFilters) {
-    query = extraFilters(query);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    logger.warn(`fetchFromTable(${table}) error`, { error: error.message });
-    return [];
-  }
-
-  return (data ?? []).map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (row: Record<string, any>): DiscoveredListing => ({
-      entityType,
-      entityId: String(row.id),
-      slugs: rowToSlugs(row),
-      publishedAt: row.updated_at as string,
-    }),
-  );
+    let query: any = supabase
+      .from(table)
+      .select(SELECT_COLS)
+      .gte("updated_at", since.toISOString())
+      .order("updated_at", { ascending: false })
+      .range(from, to);
+
+    // Apply translation gate: all 14 slug columns must be non-null
+    for (const col of SLUG_COLS) {
+      query = query.not(col, "is", null);
+    }
+
+    // Apply table-specific filters
+    if (extraFilters) {
+      query = extraFilters(query);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      logger.warn(`fetchFromTable(${table}) error`, {
+        error: error.message,
+        from,
+        to,
+      });
+      break;
+    }
+
+    const rows = data ?? [];
+    results.push(
+      ...rows.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (row: Record<string, any>): DiscoveredListing => ({
+          entityType,
+          entityId: String(row.id),
+          slugs: rowToSlugs(row),
+          publishedAt: row.updated_at as string,
+        }),
+      ),
+    );
+
+    // Short page = no more rows to fetch.
+    if (rows.length < to - from + 1) break;
+  }
+
+  return results;
 }
 
 /**
