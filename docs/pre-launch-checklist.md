@@ -33,31 +33,31 @@ before accepting URLs.
 
 ## 2. Launch Day — Backfill All Existing Listings
 
-**Status:** ⏳ Partially done, large backlog deferred (by decision, 2026-06-02).
+**Status:** ✅ Enqueued (2026-06-02). `missed_total` (Q5a in
+`supabase/monitoring.sql`) is now **0** — every active, fully-translated listing
+has indexing_events rows. Submission then drains automatically (see note below).
 
-The indexing service only picks up listings whose `updated_at` falls inside the
-lookback window. Listings that went active+translated before the service ran (or
-between throttled runs, before the 24h-lookback fix) were never enqueued.
+**What happened:** ~1,457 active, fully-translated listings (~59% of ~2,476
+eligible, almost all `parts`) had **zero** indexing_events rows — the launch-day
+historical backfill was never completed as inventory grew. Backfill runs with
+`lookback_minutes=525960` cleared it once two ceilings were fixed:
+1. a hardcoded 500-row/table discovery cap (→ `INDEXING_DISCOVERY_LIMIT`), and
+2. PostgREST's ~1000-row server cap on a single response — discovery now
+   **paginates** with `.range()`, so it can reach the whole table.
 
-**Measured 2026-06-02:** ~1,457 active, fully-translated listings had **zero**
-indexing_events rows (~59% of ~2,476 eligible) — the launch-day historical
-backfill was never fully completed as inventory grew. A 7-day-lookback sweep
-(`lookback_minutes=10080`) enqueued the recent ones, dropping `missed_last_7d`
-from 192 to **0**. That leaves ~1,360 historical listings (all older than 7 days,
-outside any normal lookback) still unindexed. **Decision: defer the full
-historical backfill** — rely on the new 24h default lookback + the Refactor
-publish webhook to keep *new* listings covered going forward.
+**Submission drain (automatic, no action needed):**
+- **IndexNow** clears fast — the whole batch goes in one or two scheduled runs
+  (`fetchDueEvents` processes 1000/run; IndexNow auto-chunks at 10k URLs).
+- **Google** is quota-bound at ~200 URL/day, so the ~1,400 Google events spread
+  over ~7 days via the normal retry/backoff; events past the retry budget settle
+  as `skipped` (expected — not a hard failure). Request a Google quota increase
+  (item #3) to speed this up.
+- Watch Q3 (hard-failure rate) and Q5a (`missed_total`) in `supabase/monitoring.sql`.
 
-**To run the full backfill when ready:**
-- Trigger a manual run via GitHub Actions with `dry_run: false` (NOT dry — a dry
-  run enqueues then marks `success`/`dry-run` without submitting, and `dedupe_key`
-  then blocks the real submission):
-  - `lookback_minutes`: `525960` (≈ 1 year) or the age of the oldest listing.
-- Discovery caps each source table at **500 rows/run**, so a single run drains at
-  most ~500/table — re-run until `missed_total` (Q5a in `supabase/monitoring.sql`)
-  reaches ~0. Google's 200/day quota means its share spreads over several days
-  (IndexNow clears in one batch).
-- Track progress with Q5 in `supabase/monitoring.sql`.
+**To re-backfill in future** (e.g. after a long outage): manual dispatch with
+`dry_run: false` (NOT dry — a dry run enqueues then marks `success`/`dry-run`
+without submitting, and `dedupe_key` blocks the real submission),
+`lookback_minutes: 525960`, `discovery_limit` ≥ the largest table's row count.
 
 ---
 
@@ -168,7 +168,7 @@ Delete these branches after merging the PRs:
 | # | Topic | Blocker for launch? | Who |
 |---|---|---|---|
 | 1 | IndexNow domain verification | ✅ Done — verified live (403s stopped 2026-04-20) | Dev/Ops |
-| 2 | Backfill existing listings | ⏳ ~182 swept; ~1,457 historical backlog deferred | Dev/Ops |
+| 2 | Backfill existing listings | ✅ Enqueued — missed_total=0; Google submission drains over ~7d (quota) | Dev/Ops |
 | 3 | Google quota increase | Soft — retry logic covers it | Dev/Ops |
 | 4 | Confirm `SITE_BASE_URL` not overridden | Yes | Dev/Ops |
 | 5 | Confirm `INDEXING_DRY_RUN` not stuck on | Yes | Dev/Ops |
