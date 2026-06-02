@@ -12,6 +12,17 @@ import { logger } from "../utils/logger.js";
 import type { SubmitStats, IndexingEvent } from "../types.js";
 
 /**
+ * A failure is "hard" (actionable misconfiguration) when it's an auth /
+ * bad-request 4xx other than 429. 429 (quota / rate-limit) and 5xx are
+ * transient and already covered by retry + quota handling, so they must NOT
+ * trip the silent-failure alert (otherwise Google's daily-quota 429s would
+ * page constantly). Network errors (status 0) are likewise treated as soft.
+ */
+function isHardFailure(httpStatus: number): boolean {
+  return httpStatus >= 400 && httpStatus < 500 && httpStatus !== 429;
+}
+
+/**
  * Phase 2: Process all pending (and retry-due) indexing events.
  *
  * IndexNow: All pending indexnow-channel events are batched into a single
@@ -32,6 +43,7 @@ export async function submitPendingEvents(
     indexnowFailed: 0,
     googleSuccess: 0,
     googleFailed: 0,
+    hardFailures: 0,
   };
 
   const pendingEvents = await fetchDueEvents();
@@ -109,6 +121,11 @@ async function processIndexNowEvents(
       );
     }
     stats.indexnowFailed = events.length;
+    // Whole-batch IndexNow failure (one request → one outcome for every URL).
+    // A 403 here is the "site not verified" misconfiguration we want surfaced.
+    if (isHardFailure(result.httpStatus)) {
+      stats.hardFailures += events.length;
+    }
   }
 }
 
@@ -175,6 +192,12 @@ async function processGoogleEvents(
         newCount,
       );
       stats.googleFailed++;
+      // 429 (quota) flows through here too, but isHardFailure() excludes it —
+      // daily quota exhaustion is expected, not an alertable misconfiguration.
+      // A 401/403 (revoked service account) or 404 (bad URL) is.
+      if (isHardFailure(result.httpStatus)) {
+        stats.hardFailures++;
+      }
     }
   }
 }

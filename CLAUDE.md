@@ -8,7 +8,7 @@ Standalone Node.js/TypeScript service that auto-submits newly published TradeAer
 - Detects listings that became active and fully translated (all 14 locale slugs populated) within the lookback window
 - Builds all 14 locale URLs per listing
 - Submits URLs in batch to **IndexNow** (covers Bing, Yandex, Seznam, Naver)
-- Pings **Google** sitemap endpoint to trigger re-crawl
+- Submits URLs to the **Google Indexing API** via a service account (falls back to a sitemap ping only when no service account is configured)
 - Records all attempts in the `indexing_events` Supabase table with retry/backoff logic
 - Exposes data to the admin dashboard via `/api/admin/indexing` in TradeAero-Refactor
 
@@ -34,16 +34,18 @@ src/
                               #   markEventsSuccess, markEventFailed
   channels/
     indexnow.ts               # submitToIndexNow(urls[]) — batch POST to api.indexnow.org
-    google.ts                 # pingGoogleSitemap() — GET google.com/ping?sitemap=<url>
+    google.ts                 # submitGoogleEvents() — Google Indexing API (service-account JWT);
+                              #   pingGoogleSitemap() — deprecated-endpoint fallback
   jobs/
     discover.ts               # discoverAndEnqueue(): query new listings -> insert pending events
-    submit.ts                 # submitPendingEvents(): batch IndexNow + single Google ping
+    submit.ts                 # submitPendingEvents(): batch IndexNow + per-event Google Indexing API
     retry.ts                  # computeNextRetryAt(attemptCount): exponential backoff
   utils/
     logger.ts                 # Structured logger with timestamp, level, context
     fetch.ts                  # fetchWithTimeout wrapper
     dedupe.ts                 # computeDedupeKey(entityId, channel): sha256 hex
     url-builder.ts            # buildAllLocaleUrls(entityType, slugs): 14 locale URLs
+    heartbeat.ts              # pingHeartbeat() dead-man's-switch + isRunUnhealthy() failure-rate gate
   __tests__/
     url-builder.test.ts       # 56 URL assertions (4 entity types x 14 locales)
     dedupe.test.ts            # Dedupe key stability
@@ -51,6 +53,7 @@ src/
     retry.test.ts             # Exponential backoff intervals
 supabase/
   add_indexing_events_table.sql  # DB migration (run once in Supabase SQL Editor)
+  monitoring.sql                 # Read-only health queries (liveness, hard-failure rate, missed listings)
 docs/
   indexnow-credentials.md    # How to generate/rotate the IndexNow API key
 .github/workflows/
@@ -78,7 +81,8 @@ npm run lint       # ESLint
 | `INDEXING_LOOKBACK_MINUTES` | No | `60` | How far back to look for new listings |
 | `INDEXING_DRY_RUN` | No | `false` | Discover and enqueue but skip external API calls |
 | `INDEXNOW_BATCH_SIZE` | No | `100` | Max listings per IndexNow batch |
-| `HEARTBEAT_URL` | No | — | Dead-man's-switch URL (healthchecks.io / cronitor). Pinged on a successful run; `<url>/fail` pinged on a fatal error. Unset = no-op. |
+| `HEARTBEAT_URL` | No | — | Dead-man's-switch URL (healthchecks.io / cronitor). Pinged on a healthy run; `<url>/fail` pinged on a fatal error or a silently-failing run. Unset = no-op. |
+| `INDEXING_FAILURE_ALERT_THRESHOLD` | No | `0.5` | Hard-failure ratio (0–1) at/above which a *completed* run pings `<url>/fail` instead of success. Only auth/bad-request 4xx count (excl. 429), so Google quota never trips it. |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 
 ## GitHub Actions Secrets
@@ -119,6 +123,28 @@ expects a ping on every run and alerts when one doesn't arrive.
 - An **idle** run (no new listings) still completes and pings success, so the
   monitor stays green during quiet windows.
 
+**Silent-failure alert (completed-but-failing runs).** The dead-man's-switch
+only catches "the job didn't run". It can't catch a run that *completes* while a
+channel rejects every URL — exactly what happened Apr 5–20 (1,436 IndexNow 403
+"site not verified" rejections; every run "succeeded", nothing was indexed, no
+alert fired). To close that gap, `submitPendingEvents` tracks `hardFailures`
+(auth/bad-request 4xx, excluding 429), and `isRunUnhealthy(stats, threshold)`
+(`src/utils/heartbeat.ts`) flips a completed run to a `/fail` ping when the
+hard-failure ratio ≥ `INDEXING_FAILURE_ALERT_THRESHOLD` (default 0.5).
+- **Why 0.5:** every listing enqueues exactly one IndexNow + one Google event,
+  so one channel wiping out is ~50% of attempts — 0.5 fires on a full
+  single-channel outage but not on isolated transient failures.
+- **Google quota 429s never trip it** — they're counted in `googleFailed` but
+  not `hardFailures`, so daily-quota exhaustion stays green (it's expected).
+- 5xx / network errors are treated as transient (retried), not hard.
+
+**Ad-hoc health checks (`supabase/monitoring.sql`).** Read-only queries for the
+Supabase SQL Editor: Q1 liveness/freshness, Q2 channel·status·response_code
+breakdown (disambiguates what `skipped` actually means), Q3 hard-failure rate
+(mirrors the in-app alert), Q4 retry backlog, and Q5 **missed listings** —
+active + fully-translated listings with no `indexing_events` row, the one
+discovery-side gap the event table can't show on its own.
+
 **Setup**
 1. Create a check at healthchecks.io (or cronitor / Better Stack). Set
    **period 15 min** but a generous **grace ≈ 12 h** (see the cadence note
@@ -158,8 +184,10 @@ real time on publish; the cron is only a slow backstop.
 3. submitPendingEvents()     — Phase 2
    a. Fetch all events where status='pending' OR (status='failed' AND next_retry_at <= now())
    b. IndexNow: flatten all submitted_urls from pending indexnow events -> one batch POST
-   c. Google: if any pending google events -> one sitemap ping GET
-   d. Mark events success/failed, increment attempt_count
+   c. Google: per-event POST to the Indexing API (service account); sitemap-ping fallback if unconfigured
+   d. Mark events success/failed/skipped, increment attempt_count, accumulate hardFailures
+4. Heartbeat — ping HEARTBEAT_URL (success), or <url>/fail on a fatal error
+   OR a completed run whose hard-failure ratio ≥ INDEXING_FAILURE_ALERT_THRESHOLD
 ```
 
 ## Translation Gate
@@ -227,9 +255,14 @@ Formula: `min(5min × 2^attempt, 24h)` ± 10% jitter
 
 ## Google Channel
 
-- **Endpoint**: `GET https://www.google.com/ping?sitemap=https://trade.aero/2d6a9a/sitemap.xml`
-- **One request per run** — signals Google to re-crawl the sitemap (covers all 14 locales via hreflang)
-- All `channel='google'` events for that run share the same response outcome
+Primary path — **Google Indexing API** (when `GOOGLE_SERVICE_ACCOUNT_JSON` is set):
+- **Endpoint**: `POST https://indexing.googleapis.com/v3/urlNotifications:publish`
+- **Auth**: service-account JWT → OAuth2 access token (`https://www.googleapis.com/auth/indexing` scope)
+- **Per-event**: submits each listing's canonical English URL (or all 14 locale URLs when `GOOGLE_INDEXING_ALL_LOCALES=true`)
+- **Quota**: 200 URL notifications/day per Search Console property. On `429` the rest of the batch is short-circuited; events retry next run and, past the retry budget, settle as `skipped` (expected — not a hard failure)
+
+Fallback — **sitemap ping** (only when no service account is configured):
+- `GET https://www.google.com/ping?sitemap=<sitemap>` — **deprecated/removed by Google (Jan 2024)**; a 404 is expected and events are marked `skipped` (not `failed`) so they don't retry forever. Configure a service account to actually index.
 
 ## Database Table: `indexing_events`
 

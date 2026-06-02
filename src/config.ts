@@ -42,12 +42,27 @@ export const config = {
   monitoring: {
     /**
      * Optional dead-man's-switch URL (healthchecks.io / cronitor / Better Uptime).
-     * Pinged after every successful run; `<url>/fail` is pinged on a fatal error.
+     * Pinged after every healthy run; `<url>/fail` is pinged on a fatal error OR
+     * a completed-but-silently-failing run (see failureAlertThreshold).
      * When unset, the heartbeat is a no-op. Lets an external monitor alert when
      * the GitHub Actions schedule silently stops firing — the failure mode behind
      * the 2026-05-28 stall (no run = no logs = no alert without this).
      */
     heartbeatUrl: process.env.HEARTBEAT_URL ?? "",
+    /**
+     * Hard-failure ratio (0–1) at or above which a *completed* run is treated as
+     * unhealthy and pings `<url>/fail` instead of the success URL. Catches the
+     * "ran but a channel rejects every URL" failure mode (e.g. the Apr 5–20
+     * IndexNow 403s) that the dead-man's-switch alone can't see.
+     *
+     * Default 0.5: since every listing enqueues exactly one IndexNow + one Google
+     * event, a single channel wiping out is ~50% of attempts — so 0.5 fires on a
+     * full single-channel outage but not on isolated transient failures. Only
+     * `hardFailures` count toward the ratio, so Google quota 429s never trip it.
+     */
+    failureAlertThreshold: Number(
+      process.env.INDEXING_FAILURE_ALERT_THRESHOLD ?? 0.5,
+    ),
   },
 } as const;
 

@@ -2,7 +2,7 @@ import { validateConfig, config } from "./config.js";
 import { discoverAndEnqueue } from "./jobs/discover.js";
 import { submitPendingEvents } from "./jobs/submit.js";
 import { logger } from "./utils/logger.js";
-import { pingHeartbeat } from "./utils/heartbeat.js";
+import { pingHeartbeat, isRunUnhealthy } from "./utils/heartbeat.js";
 
 async function main(): Promise<void> {
   // Pre-prod kill switch. The `production` GitHub Environment leaves
@@ -44,8 +44,22 @@ async function main(): Promise<void> {
 
   // Dead-man's-switch: signal a healthy completed run so an external monitor
   // can alert if the GitHub Actions schedule ever stops firing (no-op unless
-  // HEARTBEAT_URL is configured).
-  await pingHeartbeat(config.monitoring.heartbeatUrl, "success", correlationId);
+  // HEARTBEAT_URL is configured). A run that *completes* but had a channel
+  // reject (nearly) every URL pings `/fail` instead — otherwise a silent
+  // misconfiguration (e.g. an unverified IndexNow domain) would keep the
+  // monitor green while nothing actually gets indexed.
+  const unhealthy = isRunUnhealthy(stats, config.monitoring.failureAlertThreshold);
+  if (unhealthy) {
+    logger.warn(
+      "Run completed but hard-failure rate crossed alert threshold — pinging /fail",
+      { correlationId, threshold: config.monitoring.failureAlertThreshold, ...stats },
+    );
+  }
+  await pingHeartbeat(
+    config.monitoring.heartbeatUrl,
+    unhealthy ? "fail" : "success",
+    correlationId,
+  );
 }
 
 main().catch(async (err) => {

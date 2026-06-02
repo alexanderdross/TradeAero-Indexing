@@ -1,6 +1,30 @@
 import { logger } from "./logger.js";
+import type { SubmitStats } from "../types.js";
 
 const HEARTBEAT_TIMEOUT_MS = 5_000;
+
+/**
+ * Decide whether a *completed* run should be reported as unhealthy (ping
+ * `/fail`) rather than healthy. True when the run did real work and the share
+ * of hard (unexpected) failures meets the threshold.
+ *
+ * Why this exists: the heartbeat proves the job *ran*, but a run can finish
+ * "successfully" while a channel rejects every URL (the Apr 5–20 IndexNow 403
+ * episode emitted no error and no missing ping). Only `hardFailures` count, so
+ * idle runs (0 attempts) and Google's expected quota 429s never flip a run to
+ * unhealthy.
+ *
+ * @param threshold hard-failure ratio in [0, 1]; >1 effectively disables it.
+ */
+export function isRunUnhealthy(stats: SubmitStats, threshold: number): boolean {
+  const attempted =
+    stats.indexnowSuccess +
+    stats.indexnowFailed +
+    stats.googleSuccess +
+    stats.googleFailed;
+  if (attempted === 0 || stats.hardFailures === 0) return false;
+  return stats.hardFailures / attempted >= threshold;
+}
 
 /**
  * Best-effort dead-man's-switch ping.

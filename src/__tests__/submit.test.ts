@@ -104,6 +104,7 @@ describe("submitPendingEvents — no work", () => {
       indexnowFailed: 0,
       googleSuccess: 0,
       googleFailed: 0,
+      hardFailures: 0,
     });
     expect(db.markEventsAttempted).not.toHaveBeenCalled();
     expect(channels.submitToIndexNow).not.toHaveBeenCalled();
@@ -164,6 +165,31 @@ describe("submitPendingEvents — IndexNow channel", () => {
     expect(newCount).toBe(2); // attempt_count 1 -> 2
     expect(nextRetryAt).toBeInstanceOf(Date); // a retry is scheduled
     expect(stats.indexnowFailed).toBe(1);
+    // 429 is transient (quota/rate-limit), not a misconfiguration — it must not
+    // count as a hard failure or it would page on every Google quota cap.
+    expect(stats.hardFailures).toBe(0);
+  });
+
+  it("counts a 403 batch rejection as a hard failure (silent-failure alert)", async () => {
+    // The Apr 5–20 episode: IndexNow returns 403 "UserForbiddedToAccessSite"
+    // for the whole batch. Each event is hard-failed so a completed run can
+    // still raise a /fail ping.
+    const events = [
+      makeEvent({ id: "in-1", channel: "indexnow", attempt_count: 0 }),
+      makeEvent({ id: "in-2", channel: "indexnow", attempt_count: 0 }),
+    ];
+    db.fetchDueEvents.mockResolvedValue(events);
+    channels.submitToIndexNow.mockResolvedValue({
+      success: false,
+      httpStatus: 403,
+      responseBody: "UserForbiddedToAccessSite",
+      urlsSubmitted: 0,
+    });
+
+    const stats = await submitPendingEvents("corr-in-403");
+
+    expect(stats.indexnowFailed).toBe(2);
+    expect(stats.hardFailures).toBe(2);
   });
 
   it("marks the 5th failure as skipped (no further retry)", async () => {
@@ -320,6 +346,7 @@ describe("submitPendingEvents — both channels in one run", () => {
       indexnowFailed: 0,
       googleSuccess: 1,
       googleFailed: 0,
+      hardFailures: 0,
     });
   });
 });

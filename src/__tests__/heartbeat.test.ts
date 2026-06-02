@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { pingHeartbeat } from "../utils/heartbeat.js";
+import { pingHeartbeat, isRunUnhealthy } from "../utils/heartbeat.js";
+import type { SubmitStats } from "../types.js";
 
 describe("pingHeartbeat", () => {
   afterEach(() => {
@@ -52,5 +53,59 @@ describe("pingHeartbeat", () => {
       .mockResolvedValue(new Response(null, { status: 200 }));
     await pingHeartbeat("https://hc.example/abc/", "success", "cid");
     expect(fetchSpy.mock.calls[0][0]).toBe("https://hc.example/abc/");
+  });
+});
+
+describe("isRunUnhealthy", () => {
+  const base: SubmitStats = {
+    indexnowSuccess: 0,
+    indexnowFailed: 0,
+    googleSuccess: 0,
+    googleFailed: 0,
+    hardFailures: 0,
+  };
+
+  it("is healthy when nothing was attempted (idle run)", () => {
+    expect(isRunUnhealthy(base, 0.5)).toBe(false);
+  });
+
+  it("is healthy when there are no hard failures (e.g. all-success run)", () => {
+    expect(
+      isRunUnhealthy({ ...base, indexnowSuccess: 10, googleSuccess: 10 }, 0.5),
+    ).toBe(false);
+  });
+
+  it("does NOT flip on Google quota 429s (counted in googleFailed, not hardFailures)", () => {
+    // 10 indexnow ok + 10 google quota-skipped → 50% failed but 0 hard.
+    expect(
+      isRunUnhealthy(
+        { ...base, indexnowSuccess: 10, googleSuccess: 0, googleFailed: 10 },
+        0.5,
+      ),
+    ).toBe(false);
+  });
+
+  it("flips when a whole channel hard-fails (the 403 episode)", () => {
+    // 10 indexnow hard-failed + 10 google ok → 10/20 = 0.5 ≥ threshold.
+    expect(
+      isRunUnhealthy(
+        {
+          ...base,
+          indexnowFailed: 10,
+          hardFailures: 10,
+          googleSuccess: 10,
+        },
+        0.5,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not flip on a single isolated hard failure among many successes", () => {
+    expect(
+      isRunUnhealthy(
+        { ...base, indexnowSuccess: 99, googleSuccess: 100, indexnowFailed: 1, hardFailures: 1 },
+        0.5,
+      ),
+    ).toBe(false);
   });
 });
