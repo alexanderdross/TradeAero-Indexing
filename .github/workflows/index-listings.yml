@@ -1,6 +1,6 @@
 name: "Index New Listings"
 
-# Runs every 15 minutes to pick up newly published, fully-translated listings
+# Runs every 30 minutes to pick up newly published, fully-translated listings
 # and submit their locale URLs to IndexNow + Google Indexing API.
 #
 # Translation gate: listings are only submitted after ALL 14 locale slugs are
@@ -11,7 +11,7 @@ name: "Index New Listings"
 
 on:
   schedule:
-    - cron: "*/15 * * * *"    # Every 15 minutes
+    - cron: "*/30 * * * *"    # Every 30 minutes
   workflow_dispatch:
     inputs:
       lookback_minutes:

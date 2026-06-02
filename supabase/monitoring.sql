@@ -99,12 +99,11 @@ order by channel, status;
 --
 -- Two numbers matter and they differ a lot:
 --   * total backlog  — every never-indexed gated listing (historical + recent).
---                      Measured 2026-06-02: ~1,457. This is pre-service /
---                      never-backfilled inventory; clearing it needs a wide
---                      (~1y) lookback backfill, deferred by decision.
+--                      The ~1,457 pre-service backlog was cleared by a 1y-lookback
+--                      backfill on 2026-06-02 (→ 0); this should stay ~0.
 --   * last-7d        — recently published/updated ones the normal pipeline
---                      should have caught. This is the actionable, ongoing
---                      signal; it should trend to ~0 now the lookback is 24h.
+--                      should have caught. The actionable ongoing signal; it
+--                      should stay ~0 now the lookback is 24h.
 with gated as (
   select 'aircraft'::text as entity_type, id::text as entity_id, updated_at
   from aircraft_listings
@@ -152,4 +151,3 @@ select
 -- from missed
 -- where updated_at > now() - interval '7 days'
 -- order by updated_at desc;
-
