@@ -54,4 +54,17 @@ export interface SubmitStats {
   indexnowFailed: number;
   googleSuccess: number;
   googleFailed: number;
+  /**
+   * Subset of failures that are *unexpected* — auth / bad-request style 4xx
+   * (e.g. IndexNow 403 "UserForbiddedToAccessSite", a revoked Google service
+   * account). Deliberately excludes outcomes the retry/quota model already
+   * accounts for: Google 429 quota exhaustion, deprecated-endpoint skips, 5xx
+   * server errors, and network blips.
+   *
+   * This is the signal behind the "ran but silently failing" alert: a run can
+   * complete cleanly while a channel rejects every URL (as happened Apr 5–20,
+   * 1,436 IndexNow 403s). The dead-man's-switch only catches "job didn't run";
+   * `hardFailures` lets a *completed* run still raise a `/fail` ping.
+   */
+  hardFailures: number;
 }

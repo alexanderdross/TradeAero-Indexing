@@ -10,17 +10,22 @@ to `trade.aero` counts in search engines.
 
 ## 1. IndexNow — Domain Verification
 
-**Status:** Failing with 403 — `"User is unauthorized to access the site"`
+**Status:** ✅ Resolved (verified live). The 403 `"UserForbiddedToAccessSite"`
+rejections appear in `indexing_events` only between **2026-04-05 and 2026-04-20**
+(1,436 events, all settled to `skipped`); **zero in the last 7 days** as of
+2026-06-02. The key file is now reachable and IndexNow accepts submissions
+(recent `indexnow` events are `status='success'` with `response_code` 200/202).
 
 IndexNow verifies site ownership by fetching the key file from the submitted domain
-before accepting URLs. Since `trade.aero` is not live yet, the file cannot be reached.
+before accepting URLs.
 
-**What to ask:**
-- Is the Next.js `public/dae83f2c776a45ffa42825f4f1f523dc.txt` file included in the
-  Vercel deployment for `trade.aero`?
-- After launch, run: `curl https://trade.aero/dae83f2c776a45ffa42825f4f1f523dc.txt`
+**To re-confirm if it ever regresses:**
+- Confirm the Next.js `public/dae83f2c776a45ffa42825f4f1f523dc.txt` file is included
+  in the Vercel deployment for `trade.aero`.
+- Run: `curl https://trade.aero/dae83f2c776a45ffa42825f4f1f523dc.txt`
   and confirm it returns just the key string with HTTP 200.
-- Trigger a manual run (dry_run=false) after launch to confirm IndexNow returns 200/202.
+- Watch for `indexnow` / `403` rows reappearing (Q2 in `supabase/monitoring.sql`)
+  — the in-app hard-failure alert now pages on this automatically.
 
 **Reference:** `docs/indexnow-credentials.md`
 
@@ -147,7 +152,7 @@ Delete these branches after merging the PRs:
 
 | # | Topic | Blocker for launch? | Who |
 |---|---|---|---|
-| 1 | IndexNow domain verification | Yes — submit after launch | Dev/Ops |
+| 1 | IndexNow domain verification | ✅ Done — verified live (403s stopped 2026-04-20) | Dev/Ops |
 | 2 | Backfill existing listings | Yes — run on launch day | Dev/Ops |
 | 3 | Google quota increase | Soft — retry logic covers it | Dev/Ops |
 | 4 | Confirm `SITE_BASE_URL` not overridden | Yes | Dev/Ops |
