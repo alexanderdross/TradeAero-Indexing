@@ -91,5 +91,8 @@ jobs:
           # an external monitor alerts if this schedule ever silently stops firing
           # (the 2026-05-28 stall produced no run, no logs, and no alert).
           HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}
+          # Optional Sentry error reporting. No-op when the secret is unset.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || github.ref_name }}
           LOG_LEVEL: "info"
         run: node dist/index.js

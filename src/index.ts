@@ -1,3 +1,8 @@
+// Initialise Sentry before anything else so the SDK is ready before app code
+// runs. No-op when SENTRY_DSN is unset.
+import "./instrument.js";
+import * as Sentry from "@sentry/node";
+
 import { validateConfig, config } from "./config.js";
 import { discoverAndEnqueue } from "./jobs/discover.js";
 import { submitPendingEvents } from "./jobs/submit.js";
@@ -67,10 +72,14 @@ main().catch(async (err) => {
     error: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });
+  // Report to Sentry (no-op when unset) before exiting. flush() must complete
+  // or the buffered event is lost when the short-lived process dies.
+  Sentry.captureException(err);
   await pingHeartbeat(
     config.monitoring.heartbeatUrl,
     "fail",
     process.env.GITHUB_RUN_ID ?? "unknown",
   );
+  await Sentry.flush(2000);
   process.exit(1);
 });

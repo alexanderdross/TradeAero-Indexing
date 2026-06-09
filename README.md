@@ -46,6 +46,8 @@ Two environment variables act as control switches:
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | No | unset | Full Google Service Account JSON. When set, uses the Google Indexing API; when empty, falls back to a sitemap ping |
 | `GOOGLE_INDEXING_ALL_LOCALES` | No | `false` | When `"true"`, submit all 14 locale URLs per listing to the Indexing API (costs 14x quota) |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, or `error` |
+| `SENTRY_DSN` | No | — | Sentry DSN for fatal-error reporting. Inert when unset. The run captures a fatal exception (and flushes) before exiting. |
+| `SENTRY_ENVIRONMENT` | No | branch name | Sentry `environment` tag. Defaults to the Git ref / `NODE_ENV`. |
 
 Copy `.env.example` to `.env` for local development.
 
