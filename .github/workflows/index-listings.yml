@@ -94,5 +94,8 @@ jobs:
           # Optional Sentry error reporting. No-op when the secret is unset.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || github.ref_name }}
+          # TEMP (sentry-smoke-check branch only): fire one Sentry test event and
+          # exit to verify DSN/SDK/project wiring end-to-end. Not present on main.
+          SENTRY_SMOKE_TEST: "1"
           LOG_LEVEL: "info"
         run: node dist/index.js
