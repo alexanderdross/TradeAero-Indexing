@@ -10,26 +10,6 @@ import { logger } from "./utils/logger.js";
 import { pingHeartbeat, isRunUnhealthy } from "./utils/heartbeat.js";
 
 async function main(): Promise<void> {
-  // Sentry wiring smoke test (ops verification). When SENTRY_SMOKE_TEST is set,
-  // emit one deliberate event and exit — proves DSN + SDK + project + the
-  // service tag end-to-end without needing a real error. Runs BEFORE the kill
-  // switch so a gated (production-disabled) environment can still be verified.
-  if (
-    process.env.SENTRY_SMOKE_TEST === "1" ||
-    process.env.SENTRY_SMOKE_TEST === "true"
-  ) {
-    const eventId = Sentry.captureMessage(
-      `Sentry smoke test — indexing — ${new Date().toISOString()}`,
-      "error",
-    );
-    logger.info("Sentry smoke-test event captured", {
-      eventId,
-      dsnConfigured: Boolean(process.env.SENTRY_DSN),
-    });
-    await Sentry.flush(5000);
-    return;
-  }
-
   // Pre-prod kill switch. The `production` GitHub Environment leaves
   // INDEXING_ENABLED unset so the workflow exits cleanly without touching
   // external search engines while trade.aero is still gated. Flip it on
