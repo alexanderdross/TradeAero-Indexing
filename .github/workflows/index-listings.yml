@@ -77,6 +77,10 @@ jobs:
           # Optional: Google Indexing API via Service Account (faster than sitemap ping)
           # If not set, the indexer falls back to a sitemap ping for Google discovery.
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # Keep "false" (canonical English URL only, 1/listing). At "true" the
+          # 14 locale URLs/listing exhausted the Indexing API's 200/day quota after
+          # ~14 listings and the rest 429'd. IndexNow already covers all 14 locales,
+          # and Google finds the variants via the sitemap's hreflang tags.
           GOOGLE_INDEXING_ALL_LOCALES: ${{ vars.GOOGLE_INDEXING_ALL_LOCALES || 'false' }}
           # 24h default (not 60m): GitHub throttles this schedule to runs hours
           # apart, so a 60-minute window silently dropped any listing whose
