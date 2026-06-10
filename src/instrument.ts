@@ -22,4 +22,9 @@ Sentry.init({
     process.env.GITHUB_REF_NAME ??
     process.env.NODE_ENV ??
     "production",
+  // All four TradeAero services share the single `tradeaero` Sentry project;
+  // tag the service so indexing events separate from crawler/refactor/cachewarmer
+  // (env alone can't — crawler and indexing both report environment from the
+  // git ref).
+  initialScope: { tags: { service: "indexing" } },
 });
