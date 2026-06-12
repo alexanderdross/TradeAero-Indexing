@@ -86,6 +86,7 @@ npm run lint       # ESLint
 | `SENTRY_DSN` | No | — | Sentry error reporting. Captures fatal errors **and** a tagged `silent-failure` message when a completed run crosses `INDEXING_FAILURE_ALERT_THRESHOLD`. No-op when unset. |
 | `AXIOM_TOKEN` | No | — | Axiom API token. When set, each run ships one structured `run.complete` event (`run.error` on a crash) to Axiom — a *real* liveness signal that advances on idle runs, unlike `indexing_events.last_attempt_at`. Best-effort (5 s timeout, never throws). Unset = no-op. |
 | `AXIOM_DATASET` | No | `tradeaero` | Axiom dataset to ingest into (shared across services; events tagged `service: "indexing"`). |
+| `AXIOM_DOMAIN` | No | `api.axiom.co` | Axiom ingest domain. Orgs on a regional **edge** deployment must set their edge domain (e.g. `eu-central-1.aws.edge.axiom.co`) — ingesting to the default host returns HTTP 400. Ingest path is `/v1/ingest/{dataset}`. |
 | `AXIOM_ORG_ID` | No | — | Optional Axiom org id header (only some personal API tokens need it). |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 

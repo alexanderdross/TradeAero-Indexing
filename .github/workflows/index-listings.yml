@@ -104,6 +104,10 @@ jobs:
           # AXIOM_TOKEN is added; dataset falls back to 'tradeaero'.
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
           AXIOM_DATASET: ${{ vars.AXIOM_DATASET || 'tradeaero' }}
+          # Ingest domain. Default api.axiom.co; orgs on a regional edge
+          # deployment must set their edge domain (e.g.
+          # eu-central-1.aws.edge.axiom.co) or ingest returns HTTP 400.
+          AXIOM_DOMAIN: ${{ vars.AXIOM_DOMAIN || 'api.axiom.co' }}
           AXIOM_ORG_ID: ${{ secrets.AXIOM_ORG_ID }}
           LOG_LEVEL: "info"
         run: node dist/index.js
