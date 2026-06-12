@@ -83,6 +83,10 @@ npm run lint       # ESLint
 | `INDEXNOW_BATCH_SIZE` | No | `100` | Max listings per IndexNow batch |
 | `HEARTBEAT_URL` | No | — | Dead-man's-switch URL (healthchecks.io / cronitor). Pinged on a healthy run; `<url>/fail` pinged on a fatal error or a silently-failing run. Unset = no-op. |
 | `INDEXING_FAILURE_ALERT_THRESHOLD` | No | `0.5` | Hard-failure ratio (0–1) at/above which a *completed* run pings `<url>/fail` instead of success. Only auth/bad-request 4xx count (excl. 429), so Google quota never trips it. |
+| `SENTRY_DSN` | No | — | Sentry error reporting. Captures fatal errors **and** a tagged `silent-failure` message when a completed run crosses `INDEXING_FAILURE_ALERT_THRESHOLD`. No-op when unset. |
+| `AXIOM_TOKEN` | No | — | Axiom API token. When set, each run ships one structured `run.complete` event (`run.error` on a crash) to Axiom — a *real* liveness signal that advances on idle runs, unlike `indexing_events.last_attempt_at`. Best-effort (5 s timeout, never throws). Unset = no-op. |
+| `AXIOM_DATASET` | No | `tradeaero` | Axiom dataset to ingest into (shared across services; events tagged `service: "indexing"`). |
+| `AXIOM_ORG_ID` | No | — | Optional Axiom org id header (only some personal API tokens need it). |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 
 ## GitHub Actions Secrets
@@ -93,6 +97,8 @@ npm run lint       # ESLint
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key |
 | `INDEXNOW_API_KEY` | Must match `public/{key}.txt` hosted on trade.aero |
 | `HEARTBEAT_URL` | Optional. Dead-man's-switch ping target so an external monitor alerts when this `*/30` schedule silently stops firing (see the 2026-05-28 stall — a schedule that never runs emits no logs and no error). |
+| `SENTRY_DSN` | Optional. Sentry error reporting (fatal errors + silent-failure messages). |
+| `AXIOM_TOKEN` | Optional. Axiom API token for the per-run `run.complete` liveness event. Dataset via the `AXIOM_DATASET` Actions *variable* (default `tradeaero`); `AXIOM_ORG_ID` secret only if your token needs it. |
 
 ## GitHub Actions Workflow
 
@@ -139,6 +145,22 @@ hard-failure ratio ≥ `INDEXING_FAILURE_ALERT_THRESHOLD` (default 0.5).
 - **Google quota 429s never trip it** — they're counted in `googleFailed` but
   not `hardFailures`, so daily-quota exhaustion stays green (it's expected).
 - 5xx / network errors are treated as transient (retried), not hard.
+
+**Real liveness via Axiom (`AXIOM_TOKEN`).** The admin dashboard's freshness
+banner is derived from `indexing_events.last_attempt_at`, which only advances
+when there's a *due event to submit*. A fully-drained queue (0 pending/0 failed)
+in a quiet publishing window freezes it, so the banner false-reads "stalled"
+even while the cron fires fine and healthchecks.io stays green (the 2026-06-12
+report). The fix is twofold: (1) the Refactor banner now treats a stale
+heartbeat with **zero backlog** as *idle* (healthy), not stalled; (2) each run
+emits one structured `run.complete` event to Axiom (`run.error` on a crash) via
+`src/utils/axiom.ts`. That event advances on **every** completed run — idle ones
+included — so it's a true "the worker ran" signal. Build two Axiom monitors on
+it: **liveness** = alert when no `event: run.complete` arrives in ~12 h (the
+2026-05-28 cron-stopped-firing stall); **silent failure** = alert on
+`hardFailures > 0` (the Apr 5–20 IndexNow 403s, also captured to Sentry as a
+`silent-failure`-tagged message). Best-effort, like the heartbeat — no-op when
+`AXIOM_TOKEN` is unset, never throws, 5 s timeout.
 
 **Ad-hoc health checks (`supabase/monitoring.sql`).** Read-only queries for the
 Supabase SQL Editor: Q1 liveness/freshness, Q2 channel·status·response_code
