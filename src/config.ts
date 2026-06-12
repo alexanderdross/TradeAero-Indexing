@@ -76,6 +76,21 @@ export const config = {
     failureAlertThreshold: Number(
       process.env.INDEXING_FAILURE_ALERT_THRESHOLD ?? 0.5,
     ),
+    /**
+     * Optional Axiom ingest for one structured `run.complete` event per run.
+     * Gives the admin dashboard a *real* liveness signal (the event advances on
+     * every completed run, idle runs included) instead of inferring it from
+     * `indexing_events.last_attempt_at`, which freezes when the queue is drained
+     * — the false "stalled" alarm. Also lets an Axiom monitor alert on
+     * `hardFailures > 0` (the Apr 5–20 silent-failure mode). No-op when
+     * `AXIOM_TOKEN` is unset; shares one dataset across services, tagged
+     * `service: "indexing"` (mirrors the shared Sentry project).
+     */
+    axiom: {
+      token: process.env.AXIOM_TOKEN ?? "",
+      dataset: process.env.AXIOM_DATASET ?? "tradeaero",
+      orgId: process.env.AXIOM_ORG_ID ?? "",
+    },
   },
 } as const;
 

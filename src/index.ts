@@ -8,6 +8,7 @@ import { discoverAndEnqueue } from "./jobs/discover.js";
 import { submitPendingEvents } from "./jobs/submit.js";
 import { logger } from "./utils/logger.js";
 import { pingHeartbeat, isRunUnhealthy } from "./utils/heartbeat.js";
+import { emitRunEvent } from "./utils/axiom.js";
 
 async function main(): Promise<void> {
   // Pre-prod kill switch. The `production` GitHub Environment leaves
@@ -59,12 +60,47 @@ async function main(): Promise<void> {
       "Run completed but hard-failure rate crossed alert threshold — pinging /fail",
       { correlationId, threshold: config.monitoring.failureAlertThreshold, ...stats },
     );
+    // A completed-but-failing run emits no exception, so it would never reach
+    // Sentry via the fatal-error path. Capture it explicitly (tagged so it
+    // groups separately from crashes) — the Apr 5–20 IndexNow-403 silent-failure
+    // mode the dead-man's-switch alone can't see.
+    Sentry.captureMessage(
+      "Indexing run completed but hard-failure rate crossed alert threshold",
+      {
+        level: "error",
+        tags: { signal: "silent-failure" },
+        extra: { correlationId, threshold: config.monitoring.failureAlertThreshold, ...stats },
+      },
+    );
   }
   await pingHeartbeat(
     config.monitoring.heartbeatUrl,
     unhealthy ? "fail" : "success",
     correlationId,
   );
+
+  // Ship a real "the worker ran" signal to Axiom (no-op when unconfigured). The
+  // dashboard's DB-derived heartbeat freezes on a drained queue and false-reads
+  // "stalled"; this event advances on every completed run, idle included.
+  await emitRunEvent(
+    config.monitoring.axiom,
+    {
+      event: "run.complete",
+      correlationId,
+      enqueued,
+      durationMs,
+      dryRun: config.indexing.dryRun,
+      healthy: !unhealthy,
+      release: process.env.GITHUB_SHA,
+      environment: process.env.SENTRY_ENVIRONMENT ?? process.env.GITHUB_REF_NAME,
+      ...stats,
+    },
+    correlationId,
+  );
+
+  // Flush buffered Sentry events before this short-lived process exits, or the
+  // captureMessage above (and any breadcrumbs) are lost. No-op when DSN unset.
+  await Sentry.flush(2000);
 }
 
 main().catch(async (err) => {
@@ -72,13 +108,20 @@ main().catch(async (err) => {
     error: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });
+  const correlationId = process.env.GITHUB_RUN_ID ?? "unknown";
   // Report to Sentry (no-op when unset) before exiting. flush() must complete
   // or the buffered event is lost when the short-lived process dies.
   Sentry.captureException(err);
-  await pingHeartbeat(
-    config.monitoring.heartbeatUrl,
-    "fail",
-    process.env.GITHUB_RUN_ID ?? "unknown",
+  await pingHeartbeat(config.monitoring.heartbeatUrl, "fail", correlationId);
+  await emitRunEvent(
+    config.monitoring.axiom,
+    {
+      event: "run.error",
+      correlationId,
+      healthy: false,
+      error: err instanceof Error ? err.message : String(err),
+    },
+    correlationId,
   );
   await Sentry.flush(2000);
   process.exit(1);

@@ -98,5 +98,12 @@ jobs:
           # Optional Sentry error reporting. No-op when the secret is unset.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_ENVIRONMENT: ${{ vars.SENTRY_ENVIRONMENT || github.ref_name }}
+          # Optional Axiom ingest of one `run.complete` event per run — a real
+          # liveness signal (advances on idle runs, unlike the DB heartbeat) plus
+          # a queryable `hardFailures` silent-failure signal. No-op until
+          # AXIOM_TOKEN is added; dataset falls back to 'tradeaero'.
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          AXIOM_DATASET: ${{ vars.AXIOM_DATASET || 'tradeaero' }}
+          AXIOM_ORG_ID: ${{ secrets.AXIOM_ORG_ID }}
           LOG_LEVEL: "info"
         run: node dist/index.js
