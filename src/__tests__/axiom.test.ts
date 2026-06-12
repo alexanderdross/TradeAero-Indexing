@@ -23,7 +23,7 @@ describe("emitRunEvent", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("POSTs a single _time-stamped, service-tagged event to the dataset ingest URL", async () => {
+  it("POSTs a single _time-stamped, service-tagged event to the ingest URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -31,7 +31,8 @@ describe("emitRunEvent", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.axiom.co/v1/datasets/tradeaero/ingest");
+    // Default domain + the `/v1/ingest/{dataset}` path.
+    expect(url).toBe("https://api.axiom.co/v1/ingest/tradeaero");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer xaat-test");
 
@@ -40,6 +41,18 @@ describe("emitRunEvent", () => {
     expect(body).toHaveLength(1);
     expect(body[0]).toMatchObject({ service: "indexing", event: "run.complete", hardFailures: 0 });
     expect(typeof body[0]._time).toBe("string");
+  });
+
+  it("ingests to a configured (edge) domain, normalising scheme/trailing slash", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await emitRunEvent(
+      { ...enabled, domain: "https://eu-central-1.aws.edge.axiom.co/" },
+      { event: "run.complete" },
+      "c1",
+    );
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://eu-central-1.aws.edge.axiom.co/v1/ingest/tradeaero");
   });
 
   it("adds the org-id header only when configured", async () => {

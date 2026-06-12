@@ -89,6 +89,12 @@ export const config = {
     axiom: {
       token: process.env.AXIOM_TOKEN ?? "",
       dataset: process.env.AXIOM_DATASET ?? "tradeaero",
+      /**
+       * Ingest domain. Default `api.axiom.co`. Orgs on a regional **edge**
+       * deployment must set their edge domain (e.g.
+       * `eu-central-1.aws.edge.axiom.co`) or ingest returns HTTP 400.
+       */
+      domain: process.env.AXIOM_DOMAIN ?? "api.axiom.co",
       orgId: process.env.AXIOM_ORG_ID ?? "",
     },
   },

@@ -1,14 +1,28 @@
 import { logger } from "./logger.js";
 
 const AXIOM_TIMEOUT_MS = 5_000;
-const AXIOM_INGEST_BASE = "https://api.axiom.co/v1/datasets";
+const AXIOM_DEFAULT_DOMAIN = "api.axiom.co";
 
 /** Minimal Axiom ingest config — `token`/`dataset` empty ⇒ disabled. */
 export interface AxiomConfig {
   token: string;
   dataset: string;
+  /**
+   * Axiom ingest domain. Default `api.axiom.co`. Orgs on a regional edge
+   * deployment **must** point this at their edge domain (e.g.
+   * `eu-central-1.aws.edge.axiom.co`) — ingesting to the default host returns
+   * HTTP 400. Accepts a bare host or a full URL; the scheme/trailing slash are
+   * normalised away.
+   */
+  domain?: string;
   /** Optional org id header (needed only for some personal API tokens). */
   orgId?: string;
+}
+
+/** Strip any scheme + trailing slash so we can rebuild a clean `https://` URL. */
+function normaliseDomain(domain: string | undefined): string {
+  const d = (domain || AXIOM_DEFAULT_DOMAIN).trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  return d || AXIOM_DEFAULT_DOMAIN;
 }
 
 /**
@@ -44,14 +58,23 @@ export async function emitRunEvent(
     { _time: new Date().toISOString(), service: "indexing", ...fields },
   ]);
 
+  // Ingest path is `/v1/ingest/{dataset}` on the deployment's (edge) domain.
+  const url = `https://${normaliseDomain(axiom.domain)}/v1/ingest/${encodeURIComponent(axiom.dataset)}`;
+
   try {
-    const res = await fetch(
-      `${AXIOM_INGEST_BASE}/${encodeURIComponent(axiom.dataset)}/ingest`,
-      { method: "POST", headers, body, signal: AbortSignal.timeout(AXIOM_TIMEOUT_MS) },
-    );
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: AbortSignal.timeout(AXIOM_TIMEOUT_MS),
+    });
     if (!res.ok) {
+      // Surface Axiom's error body (truncated) — a 400 usually means a wrong
+      // domain (regional edge) or malformed payload, both diagnosable here.
+      const detail = await res.text().catch(() => "");
       logger.warn("Axiom ingest non-OK (non-fatal)", {
         status: res.status,
+        body: detail.slice(0, 300),
         correlationId,
       });
     } else {
